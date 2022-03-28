@@ -304,7 +304,7 @@ def visualize_class_dist(ds_list, n_class, title=None):
     n_clients = len(ds_list)
     class_dist = np.zeros((n_clients, n_class), dtype=np.int32)
     for client_id, client_ds in enumerate(ds_list):
-        values, counts = client_ds.targets.unique(return_counts=True)
+        values, counts = client_ds.targets.cpu().unique(return_counts=True)
         class_dist[client_id, values] = counts
     
     class_cum = np.cumsum(class_dist, axis=1)
