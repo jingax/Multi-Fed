@@ -19,7 +19,7 @@ import helpers as hlp
 import models as mdl
 
 # Check avaibale device
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Used device: {}.".format(DEVICE))
 
 
@@ -115,12 +115,12 @@ hlp.visualize_class_dist(train_ds_list, meta["n_class"], title="Class distributi
 
 # Model initialization
 if MODEL == "fc":
-    client_models = [mdl.FC_Net(meta["in_dimension"][0], meta["n_class"]) for _ in range(N_CLIENTS)]
-    client_models_kd = [mdl.FC_Net(meta["in_dimension"][0], meta["n_class"]) for _ in range(N_CLIENTS)]
+    client_models = [mdl.FC_Net(meta["in_dimension"][0], meta["n_class"]).to(DEVICE) for _ in range(N_CLIENTS)]
+    client_models_kd = [mdl.FC_Net(meta["in_dimension"][0], meta["n_class"]).to(DEVICE) for _ in range(N_CLIENTS)]
 
 elif MODEL == "resnet18":
-    client_models = [mdl.ResNet18(meta["in_dimension"][0], meta["n_class"]) for _ in range(N_CLIENTS)]
-    client_models_kd = [mdl.ResNet18(meta["in_dimension"][0], meta["n_class"]) for _ in range(N_CLIENTS)]
+    client_models = [mdl.ResNet18(meta["in_dimension"][0], meta["n_class"]).to(DEVICE) for _ in range(N_CLIENTS)]
+    client_models_kd = [mdl.ResNet18(meta["in_dimension"][0], meta["n_class"]).to(DEVICE) for _ in range(N_CLIENTS)]
 
 # Performance tracker
 perf_trackers = [hlp.PerfTracker(client_models[i], train_dl_list[i], val_dl_list[i], 
