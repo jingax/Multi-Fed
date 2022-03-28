@@ -192,8 +192,9 @@ for r in range(ROUNDS):
                 optimizer.step()
     
     # Blind learning (creation of input/output pairs)
-    features_rand = torch.normal(0, 1, size=(N_CLIENTS, RANDOM_SAMPLES, *meta["in_dimension"]))
-    output_rand = torch.empty(N_CLIENTS, RANDOM_SAMPLES, meta["n_class"])
+    features_rand = torch.normal(0, 1, size=(N_CLIENTS, RANDOM_SAMPLES, *meta["in_dimension"])).to(DEVICE)
+    output_rand = torch.empty(N_CLIENTS, RANDOM_SAMPLES, meta["n_class"]).to(DEVICE)
+    
     for client_id in range(N_CLIENTS):
         model = client_models_kd[client_id]
         model.eval()
