@@ -1,0 +1,14 @@
+Parameter of the experiment conducted the 28/03/2022 at 10:03:2022.
+
+Model architecture:       fc
+Dataset:                  MNIST
+Number of clients:        4
+Dataset sizes:            uniform
+Concentration (alpha):    uniform
+Topology:                 [[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], [1, 0, 0, 0]]
+Batch size:               16
+Batch size (KD):          16
+Rounds:                   10
+Epoch per round:          1
+Epoch per round (KD):     10
+Number of random samples: 1000
