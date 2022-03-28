@@ -271,8 +271,8 @@ def split_dataset(n_clients, train_ds, val_ds, alpha, sizes=None):
 
     #Spliting the datasets
     for c in range(n_class):
-        index_class_tr = np.random.permutation(np.squeeze(np.where(train_ds.targets==c)))
-        index_class_val = np.random.permutation(np.squeeze(np.where(val_ds.targets==c)))
+        index_class_tr = np.random.permutation(np.squeeze(np.where(train_ds.targets.cpu()==c)))
+        index_class_val = np.random.permutation(np.squeeze(np.where(val_ds.targets.cpu()==c)))
 
         for client_id in range(n_clients):
             if train_dist[client_id, c] > 0:
