@@ -23,7 +23,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Used device: {}.".format(DEVICE))
 
 
-# In[13]:
+# In[3]:
 
 
 SEED = 12345
@@ -31,23 +31,24 @@ torch.manual_seed(SEED)
 np.random.seed(SEED)
 
 
-# In[14]:
+# In[4]:
 
 
 #Dataset
-DATASET = "CIFAR10" 
-MODEL = "resnet18" # 'fc', 'resnet18'
+DATASET = "MNIST" 
+MODEL = "lenet5" # 'fc', 'resnet18', 'lenet5'
 REDUCED = False
 FLATTEN = True if MODEL == "fc" else False
 
 #Collaborative learning
-N_CLIENTS = 4
+N_CLIENTS = 2
 SIZES = None # None for uniform sizes or array of length N_CLIENTS
-ALPHA = "uniform" #'uniform', 'disjoint' or postive.
-TOPOLOGY = [[0, 1, 0, 0], #Tij = 1 means i uses Xj and Yj for the KD
-            [0, 0, 1, 0],
-            [0, 0, 0, 1],
-            [1, 0, 0, 0]]
+ALPHA = 10 #'uniform', 'disjoint' or postive.
+#TOPOLOGY = [[0, 1, 0, 0], #Tij = 1 means i uses Xj and Yj for the KD
+#            [0, 0, 1, 0],
+#            [0, 0, 0, 1],
+#            [1, 0, 0, 0]]
+TOPOLOGY = [[0, 1],[1, 0]]
 
 #Learning
 BATCH_SIZE = 32
@@ -82,7 +83,7 @@ with open(EXPORT_DIR + "/metadata.txt", 'w') as f:
     f.write("Number of random samples: {}\n".format(RANDOM_SAMPLES))
 
 
-# In[15]:
+# In[5]:
 
 
 # Load dataset
@@ -106,11 +107,11 @@ val_dl_list = hlp.ds_to_dl(val_ds_list)
 
 
 #Visualize partition
-hlp.visualize_class_dist(train_ds_list, meta["n_class"], title="Class distribution")
-#hlp.visualize_class_dist(val_ds_list, N_CLASS, title="Validation datasets")
+hlp.visualize_class_dist(train_ds_list, meta["n_class"], title="Class distribution (alpha = {})".format(ALPHA),
+                         savepath=EXPORT_DIR + "/class_dist.png")
 
 
-# In[ ]:
+# In[6]:
 
 
 # Model initialization
@@ -122,7 +123,11 @@ elif MODEL == "resnet18":
     client_models = [mdl.ResNet18(meta["in_dimension"][0], meta["n_class"]).to(DEVICE) for _ in range(N_CLIENTS)]
     client_models_kd = [mdl.ResNet18(meta["in_dimension"][0], meta["n_class"]).to(DEVICE) for _ in range(N_CLIENTS)]
 
-# Performance tracker
+elif MODEL == "lenet5":
+    client_models = [mdl.LeNet5(meta["in_dimension"][0], meta["n_class"]).to(DEVICE) for _ in range(N_CLIENTS)]
+    client_models_kd = [mdl.LeNet5(meta["in_dimension"][0], meta["n_class"]).to(DEVICE) for _ in range(N_CLIENTS)]
+
+    # Performance tracker
 perf_trackers = [hlp.PerfTracker(client_models[i], train_dl_list[i], val_dl_list[i], 
                                  CRITERION, meta["n_class"], 
                                  EXPORT_DIR + "/client_{}".format(i)) for i in range(N_CLIENTS)]
@@ -131,14 +136,7 @@ perf_trackers_kd = [hlp.PerfTracker(client_models_kd[i], train_dl_list[i], val_d
                                     EXPORT_DIR + "/client_{}_KD".format(i)) for i in range(N_CLIENTS)]
 
 
-# In[ ]:
-
-
-print("Data on cuda:", train_ds.targets.is_cuda)
-print("Model on cuda:", next(client_models[0].parameters()).is_cuda)
-
-
-# In[ ]:
+# In[7]:
 
 
 #Each client updates its model locally on its own dataset (Standard)
@@ -168,7 +166,7 @@ perf_trackers[user].plot_training_history(metric="accuracy")
 perf_trackers[user].plot_training_history(metric="loss")
 
 
-# In[ ]:
+# In[8]:
 
 
 #Training phase
@@ -229,27 +227,30 @@ perf_trackers_kd[user].plot_training_history(metric="accuracy")
 perf_trackers_kd[user].plot_training_history(metric="loss")
 
 
-# In[ ]:
+# In[9]:
 
 
+fig, axs = plt.subplots(N_CLIENTS, 2, figsize=(10, 4*N_CLIENTS))
 for i in range(N_CLIENTS):
-    fig, axs = plt.subplots(1, 2, figsize=(8, 4))
+
     pt = perf_trackers[i]
     pt_kd = perf_trackers_kd[i]
-    axs[0].plot(pt.index, pt.perf_history_tr["loss"], label="Train")
-    axs[0].plot(pt.index, pt.perf_history_val["loss"], label="Validation")
-    axs[0].plot(pt_kd.index, pt_kd.perf_history_tr["loss"], label="Train (KD)")
-    axs[0].plot(pt_kd.index, pt_kd.perf_history_val["loss"],label="Validation (KD)")
-    axs[0].set_title("Client {} (loss)".format(i))
-    axs[0].legend()
+    axs[i,0].plot(pt.index, pt.perf_history_tr["loss"], label="Train")
+    axs[i,0].plot(pt.index, pt.perf_history_val["loss"], label="Validation")
+    axs[i,0].plot(pt_kd.index, pt_kd.perf_history_tr["loss"], label="Train (KD)")
+    axs[i,0].plot(pt_kd.index, pt_kd.perf_history_val["loss"],label="Validation (KD)")
+    axs[i,0].set_title("Client {} (loss)".format(i))
+    axs[i,0].legend()
+    axs[i,0].grid()
     
     
-    axs[1].plot(pt.index, np.trace(pt.perf_history_tr["confusion matrix"], axis1=1, axis2=2) / np.sum(pt.perf_history_tr["confusion matrix"], axis=(1,2)), label="Train")
-    axs[1].plot(pt.index, np.trace(pt.perf_history_val["confusion matrix"], axis1=1, axis2=2) / np.sum(pt.perf_history_val["confusion matrix"], axis=(1,2)), label="Validation")
-    axs[1].plot(pt_kd.index, np.trace(pt_kd.perf_history_tr["confusion matrix"], axis1=1, axis2=2) / np.sum(pt_kd.perf_history_tr["confusion matrix"], axis=(1,2)), label="Train (KD)")
-    axs[1].plot(pt_kd.index, np.trace(pt_kd.perf_history_val["confusion matrix"], axis1=1, axis2=2) / np.sum(pt_kd.perf_history_val["confusion matrix"], axis=(1,2)), label="Validation (KD)")
-    axs[1].set_title("Client {} (accuracy)".format(i))
-    axs[1].legend()
+    axs[i, 1].plot(pt.index, np.trace(pt.perf_history_tr["confusion matrix"], axis1=1, axis2=2) / np.sum(pt.perf_history_tr["confusion matrix"], axis=(1,2)), label="Train")
+    axs[i, 1].plot(pt.index, np.trace(pt.perf_history_val["confusion matrix"], axis1=1, axis2=2) / np.sum(pt.perf_history_val["confusion matrix"], axis=(1,2)), label="Validation")
+    axs[i, 1].plot(pt_kd.index, np.trace(pt_kd.perf_history_tr["confusion matrix"], axis1=1, axis2=2) / np.sum(pt_kd.perf_history_tr["confusion matrix"], axis=(1,2)), label="Train (KD)")
+    axs[i, 1].plot(pt_kd.index, np.trace(pt_kd.perf_history_val["confusion matrix"], axis1=1, axis2=2) / np.sum(pt_kd.perf_history_val["confusion matrix"], axis=(1,2)), label="Validation (KD)")
+    axs[i, 1].set_title("Client {} (accuracy)".format(i))
+    axs[i, 1].legend()
+    axs[i, 1].grid()
     
     fig.savefig(EXPORT_DIR + "/train_history.png", bbox_inches='tight')
 

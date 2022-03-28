@@ -82,10 +82,10 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False, one_hot_labels=
         test_input = test_input.clone().reshape(test_input.size(0), -1)
 
     if reduced:
-        train_input = train_input.narrow(0, 0, 500)
-        train_target = train_target.narrow(0, 0, 500)
-        test_input = test_input.narrow(0, 0, 100)
-        test_target = test_target.narrow(0, 0, 100)
+        train_input = train_input.narrow(0, 0, 1000)
+        train_target = train_target.narrow(0, 0, 1000)
+        test_input = test_input.narrow(0, 0, 200)
+        test_target = test_target.narrow(0, 0, 200)
 
     print("Dataset sizes:\n\t- Train: {}\n\t- Valitation {}".format(tuple(train_input.shape), 
                                                                     tuple(test_input.shape)))
@@ -292,7 +292,7 @@ def split_dataset(n_clients, train_ds, val_ds, alpha, sizes=None):
 
     return train_ds_list, val_ds_list
 
-def visualize_class_dist(ds_list, n_class, title=None):
+def visualize_class_dist(ds_list, n_class, title=None, savepath=None):
     """Plot the class distribution across the clients.
     
     Arguments:
@@ -328,6 +328,9 @@ def visualize_class_dist(ds_list, n_class, title=None):
     
     if title is not None:
         ax.set_title(title)
+    # Save the figure at given location
+    if savepath is not None:
+        fig.savefig(savepath, bbox_inches='tight')
         
 def ds_to_dl(datasets, batch_size=None, shuffle=True):
     """Create a (list of) torch dataloader(s) given a (list of) dataset(s)"""

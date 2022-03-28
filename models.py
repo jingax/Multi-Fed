@@ -6,11 +6,11 @@ import torchvision
 class FC_Net(nn.Module):
     """Simple fully connected nueral network.""" 
 
-    def __init__(self, input_shape, output_shape, dropout_rate=0.25):
+    def __init__(self, input_shape, n_class, dropout_rate=0.25):
         super().__init__()
         self.fc1 = nn.Linear(input_shape, 128)  # 5*5 from image dimension
         self.fc2 = nn.Linear(128, 64)
-        self.fc3 = nn.Linear(64, output_shape)
+        self.fc3 = nn.Linear(64, n_class)
         
         self.dropout = nn.Dropout(dropout_rate)
 
@@ -43,3 +43,40 @@ def ResNet18(in_channels, n_class, pretrained=False):
     model.fc = nn.Linear(in_features=512, out_features=n_class, bias=True)
     
     return model
+
+class LeNet5(nn.Module):
+    def __init__(self, in_channels, output_shape):
+        """Create a personalized model base on the LeNet5 model archtecture.
+    
+        Arguments:
+            -in_channels: Number of input channels
+            -n_class: Number of class (for the output dimention)
+        """
+        super().__init__()
+
+        self.conv1 = nn.Conv2d(in_channels = in_channels, out_channels = 6, 
+                               kernel_size = 5, stride = 1, padding = 0)
+        self.conv2 = nn.Conv2d(in_channels = 6, out_channels = 16, 
+                               kernel_size = 5, stride = 1, padding = 0)
+        self.conv3 = nn.Conv2d(in_channels = 16, out_channels = 120, 
+                               kernel_size = 4, stride = 1, padding = 0)
+        self.linear1 = nn.Linear(120, 84)
+        self.linear2 = nn.Linear(84, output_shape)
+        self.tanh = nn.Tanh()
+        self.avgpool = nn.AvgPool2d(kernel_size = 2, stride = 2)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.tanh(x)
+        x = self.avgpool(x)
+        x = self.conv2(x)
+        x = self.tanh(x)
+        x = self.avgpool(x)
+        x = self.conv3(x)
+        x = self.tanh(x)
+
+        x = x.reshape(x.shape[0], -1)
+        x = self.linear1(x)
+        x = self.tanh(x)
+        x = self.linear2(x)
+        return x

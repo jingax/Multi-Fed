@@ -1,0 +1,14 @@
+Parameter of the experiment conducted the 28/03/2022 at 18:03:2022.
+
+Model architecture:       lenet5
+Dataset:                  MNIST
+Number of clients:        2
+Dataset sizes:            uniform
+Concentration (alpha):    5
+Topology:                 [[0, 1], [1, 0]]
+Batch size:               32
+Batch size (KD):          32
+Rounds:                   50
+Epoch per round:          1
+Epoch per round (KD):     1
+Number of random samples: 10000
