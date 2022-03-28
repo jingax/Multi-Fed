@@ -36,7 +36,7 @@ np.random.seed(SEED)
 
 #Dataset
 DATASET = "MNIST" 
-MODEL = "resnet18" # 'fc', 'resnet18'
+MODEL = "fc" # 'fc', 'resnet18'
 REDUCED = True
 FLATTEN = True if MODEL == "fc" else False
 
@@ -54,7 +54,7 @@ BATCH_SIZE = 16
 BATCH_SIZE_KD = 16
 ROUNDS = 5
 EPOCHS_PER_ROUND = 1
-EPOCHS_PER_ROUND_KD = 10
+EPOCHS_PER_ROUND_KD = 1
 RANDOM_SAMPLES = 1000
 CRITERION = nn.CrossEntropyLoss()
 CRITERION_KD = nn.MSELoss() #loss for knowledge diffusion
@@ -168,7 +168,7 @@ perf_trackers[user].plot_training_history(metric="accuracy")
 perf_trackers[user].plot_training_history(metric="loss")
 
 
-# In[ ]:
+# In[9]:
 
 
 #Training phase
@@ -229,7 +229,7 @@ perf_trackers_kd[user].plot_training_history(metric="accuracy")
 perf_trackers_kd[user].plot_training_history(metric="loss")
 
 
-# In[ ]:
+# In[10]:
 
 
 for i in range(N_CLIENTS):
