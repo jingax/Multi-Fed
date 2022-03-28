@@ -180,8 +180,8 @@ def split_dataset(n_clients, train_ds, val_ds, alpha, sizes=None):
         raise TypeError("'alpha' must be either 'uniform', 'disjoint' or a positive number.")
     
     # Extracting the count of each class
-    counts_tr = train_ds.targets.unique(return_counts=True)[1].numpy()
-    counts_val = val_ds.targets.unique(return_counts=True)[1].numpy()
+    counts_tr = train_ds.targets.unique(return_counts=True)[1].cpu().numpy()
+    counts_val = val_ds.targets.unique(return_counts=True)[1].cpu().numpy()
     counts = counts_tr + counts_val
     n_class = len(counts)
     
@@ -508,9 +508,9 @@ def infer(model, data_loader, form="numpy"):
     model.train()
     
     if form == "numpy":
-        return predictions.squeeze().numpy(), targets.squeeze().numpy()
+        return predictions.squeeze().cpu().numpy(), targets.squeeze().cpu().numpy()
     elif form == "torch":
-        return predictions.squeeze(), targets.squeeze()
+        return predictions.squeeze().cpu(), targets.squeeze().cpu()
     
     
 def foo():
