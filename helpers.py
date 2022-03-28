@@ -2,7 +2,7 @@
 # This file contains the code used to run AI models on several
 # database.
 #
-# 2021 Frédéric Berdoz, Zurich, Switzerland
+# 2022 Frédéric Berdoz, Zurich, Switzerland
 # --------------------------------------------------------------
 
 # Miscellaneous
@@ -29,7 +29,7 @@ import seaborn as sns
 from sklearn.metrics import confusion_matrix
 
 
-def load_data(dataset="MNIST", data_dir="./data", reduced=False, one_hot_labels=False, normalize=True, flatten=False):
+def load_data(dataset="MNIST", data_dir="./data", reduced=False, one_hot_labels=False, normalize=True, flatten=False, device="cpu"):
     """Load the specified dataset."""
     
     # Initialize meta data:
@@ -102,7 +102,7 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False, one_hot_labels=
     # Update metadata
     meta["in_dimension"] = train_input.shape[1:]
     
-    return train_input, train_target, test_input, test_target, meta
+    return train_input.to(device), train_target.to(device), test_input.to(device), test_target.to(device), meta
 
 class ImageDataset(torch.utils.data.Dataset):
     """Custom dataset wrapper."""
@@ -411,7 +411,7 @@ class PerfTracker():
         self.loss_min = float("inf")
         
         
-    def new_eval(self, index=None):
+    def new_eval(self, index=None, checkpoints=True):
         """Function to call in each epoch.
         
         Arguments:
@@ -425,7 +425,7 @@ class PerfTracker():
         perf_val = evaluate_model(self.model, self.dl_val, self.criterion, self.n_class)
         
         # Save model if validation performance is the best so far
-        if perf_val["loss"] < self.loss_min:
+        if perf_val["loss"] < self.loss_min and checkpoints:
             torch.save(self.model.state_dict(), self.directory + "/model.pt")
             self.loss_min = perf_val["loss"]
             self.best_model = copy.deepcopy(self.model)
@@ -511,3 +511,7 @@ def infer(model, data_loader, form="numpy"):
         return predictions.squeeze().numpy(), targets.squeeze().numpy()
     elif form == "torch":
         return predictions.squeeze(), targets.squeeze()
+    
+    
+def foo():
+    print("ok")
