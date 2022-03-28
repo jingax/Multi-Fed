@@ -23,7 +23,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Used device: {}.".format(DEVICE))
 
 
-# In[3]:
+# In[13]:
 
 
 SEED = 12345
@@ -31,13 +31,13 @@ torch.manual_seed(SEED)
 np.random.seed(SEED)
 
 
-# In[4]:
+# In[14]:
 
 
 #Dataset
-DATASET = "MNIST" 
-MODEL = "fc" # 'fc', 'resnet18'
-REDUCED = True
+DATASET = "CIFAR10" 
+MODEL = "resnet18" # 'fc', 'resnet18'
+REDUCED = False
 FLATTEN = True if MODEL == "fc" else False
 
 #Collaborative learning
@@ -50,9 +50,9 @@ TOPOLOGY = [[0, 1, 0, 0], #Tij = 1 means i uses Xj and Yj for the KD
             [1, 0, 0, 0]]
 
 #Learning
-BATCH_SIZE = 16
-BATCH_SIZE_KD = 16
-ROUNDS = 5
+BATCH_SIZE = 32
+BATCH_SIZE_KD = 32
+ROUNDS = 50
 EPOCHS_PER_ROUND = 1
 EPOCHS_PER_ROUND_KD = 1
 RANDOM_SAMPLES = 1000
@@ -82,7 +82,7 @@ with open(EXPORT_DIR + "/metadata.txt", 'w') as f:
     f.write("Number of random samples: {}\n".format(RANDOM_SAMPLES))
 
 
-# In[5]:
+# In[15]:
 
 
 # Load dataset
@@ -110,7 +110,7 @@ hlp.visualize_class_dist(train_ds_list, meta["n_class"], title="Class distributi
 #hlp.visualize_class_dist(val_ds_list, N_CLASS, title="Validation datasets")
 
 
-# In[6]:
+# In[ ]:
 
 
 # Model initialization
@@ -131,14 +131,14 @@ perf_trackers_kd = [hlp.PerfTracker(client_models_kd[i], train_dl_list[i], val_d
                                     EXPORT_DIR + "/client_{}_KD".format(i)) for i in range(N_CLIENTS)]
 
 
-# In[7]:
+# In[ ]:
 
 
 print("Data on cuda:", train_ds.targets.is_cuda)
 print("Model on cuda:", next(client_models[0].parameters()).is_cuda)
 
 
-# In[8]:
+# In[ ]:
 
 
 #Each client updates its model locally on its own dataset (Standard)
@@ -168,7 +168,7 @@ perf_trackers[user].plot_training_history(metric="accuracy")
 perf_trackers[user].plot_training_history(metric="loss")
 
 
-# In[9]:
+# In[ ]:
 
 
 #Training phase
@@ -229,7 +229,7 @@ perf_trackers_kd[user].plot_training_history(metric="accuracy")
 perf_trackers_kd[user].plot_training_history(metric="loss")
 
 
-# In[10]:
+# In[ ]:
 
 
 for i in range(N_CLIENTS):
