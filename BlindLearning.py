@@ -32,7 +32,7 @@ torch.manual_seed(SEED)
 np.random.seed(SEED)
 
 
-# In[4]:
+# In[9]:
 
 
 #Dataset
@@ -91,7 +91,7 @@ with open(EXPORT_DIR + "/metadata.txt", 'w') as f:
     f.write("Seed:                     {}\n".format(SEED))
 
 
-# In[5]:
+# In[10]:
 
 
 # Load dataset
@@ -119,7 +119,7 @@ hlp.visualize_class_dist(train_ds_list, meta["n_class"], title="Class distributi
                          savepath=EXPORT_DIR + "/class_dist.png")
 
 
-# In[7]:
+# In[11]:
 
 
 # Model initialization
@@ -144,7 +144,7 @@ perf_trackers_kd = [hlp.PerfTracker(client_models_kd[i], train_dl_list[i], val_d
                                     EXPORT_DIR + "/client_{}_KD".format(i)) for i in range(N_CLIENTS)]
 
 
-# In[8]:
+# In[12]:
 
 
 #Each client updates its model locally on its own dataset (Standard)
@@ -172,7 +172,7 @@ for client_id in range(N_CLIENTS):
         t2 = time.time()
         print("\rClient {}: epoch {}/{} done (Training time: {:.1f}s, Evaluation time: {:.1f}s).".format(client_id, e+1, ROUNDS*EPOCHS_PER_ROUND, t1-t0, t2-t1), end="  ")
         t_tot += t2-t0
-    print("\nClient {} done. ({:.1f}s)".format(t_tot))    
+    print("\nClient {} done. ({:.1f}s)".format(client_id, t_tot))    
 
 
 # In[8]:
@@ -273,12 +273,6 @@ for i in range(N_CLIENTS):
     axs[i, 1].grid()
     
     fig.savefig(EXPORT_DIR + "/train_history.png", bbox_inches='tight')
-
-
-# In[16]:
-
-
-print(mdl.ResNet18(3, 10))
 
 
 # In[ ]:
