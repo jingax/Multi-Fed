@@ -6,6 +6,7 @@
 
 #Standard modules
 import os
+import time
 import numpy as np
 import scipy
 import torch
@@ -37,50 +38,57 @@ np.random.seed(SEED)
 #Dataset
 DATASET = "MNIST" 
 MODEL = "lenet5" # 'fc', 'resnet18', 'lenet5'
-REDUCED = False
+REDUCED = 0.1
 FLATTEN = True if MODEL == "fc" else False
 
 #Collaborative learning
 N_CLIENTS = 2
-SIZES = None # None for uniform sizes or array of length N_CLIENTS
-ALPHA = 10 #'uniform', 'disjoint' or postive.
-#TOPOLOGY = [[0, 1, 0, 0], #Tij = 1 means i uses Xj and Yj for the KD
+SIZES = None # None for uniform sizes or array of length N_CLIENTS using all the data
+ALPHA = 5 #'uniform', 'disjoint' or postive.
+#Communication topology. Tij = 1 means i uses Xj and Yj for the KD
+#TOPOLOGY = [[0, 1, 0, 0], 
 #            [0, 0, 1, 0],
 #            [0, 0, 0, 1],
 #            [1, 0, 0, 0]]
-TOPOLOGY = [[0, 1],[1, 0]]
+TOPOLOGY = [[0, 1],
+            [1, 0]]
 
 #Learning
-BATCH_SIZE = 32
-BATCH_SIZE_KD = 32
-ROUNDS = 50
+BATCH_SIZE = 16
+BATCH_SIZE_KD = 16
+ROUNDS = 20
 EPOCHS_PER_ROUND = 1
 EPOCHS_PER_ROUND_KD = 1
 RANDOM_SAMPLES = 1000
 CRITERION = nn.CrossEntropyLoss()
 CRITERION_KD = nn.MSELoss() #loss for knowledge diffusion
+N_EVAL = 1 #Evaluate train and test performace after N_EVAL epochs
 
 #Directories
 DATE = datetime.now()
-EXPORT_DIR = "./saves/" + DATE.strftime("%d-%m-%Y/%H-%M-%S")
+EXPORT_DIR = "./saves/Experiments/" + DATE.strftime("%d-%m-%Y/%H-%M-%S")
 os.makedirs(EXPORT_DIR, exist_ok=True)
 
 # Store parameters
 with open(EXPORT_DIR + "/metadata.txt", 'w') as f:
     f.write("Parameter of the experiment conducted the {} at {}.\n\n".format(DATE.strftime("%d/%m/%Y"),
-                                                                         DATE.strftime("%H:%m:%Y")))
+                                                                             DATE.strftime("%H:%m:%Y")))
     f.write("Model architecture:       {}\n".format(MODEL))
     f.write("Dataset:                  {}\n".format(DATASET))
+    f.write("Reduced:                  {}\n".format(REDUCED))
     f.write("Number of clients:        {}\n".format(N_CLIENTS))
     f.write("Dataset sizes:            {}\n".format("uniform" if SIZES is None else SIZES))
     f.write("Concentration (alpha):    {}\n".format(ALPHA))
     f.write("Topology:                 {}\n".format(TOPOLOGY))
-    f.write("Batch size:               {}\n".format(BATCH_SIZE))
-    f.write("Batch size (KD):          {}\n".format(BATCH_SIZE_KD))
-    f.write("Rounds:                   {}\n".format(ROUNDS))
+    f.write("Communication rounds:     {}\n".format(ROUNDS))
     f.write("Epoch per round:          {}\n".format(EPOCHS_PER_ROUND))
-    f.write("Epoch per round (KD):     {}\n".format(EPOCHS_PER_ROUND_KD))
+    f.write("Batch size:               {}\n".format(BATCH_SIZE))
+    f.write("Criterion:                {}\n".format(type(CRITERION)))
     f.write("Number of random samples: {}\n".format(RANDOM_SAMPLES))
+    f.write("Epoch per round (KD):     {}\n".format(EPOCHS_PER_ROUND_KD))
+    f.write("Batch size (KD):          {}\n".format(BATCH_SIZE_KD))
+    f.write("Criterion (KD):           {}\n".format(type(CRITERION_KD)))
+    f.write("Seed:                     {}\n".format(SEED))
 
 
 # In[5]:
@@ -111,7 +119,7 @@ hlp.visualize_class_dist(train_ds_list, meta["n_class"], title="Class distributi
                          savepath=EXPORT_DIR + "/class_dist.png")
 
 
-# In[6]:
+# In[7]:
 
 
 # Model initialization
@@ -127,7 +135,7 @@ elif MODEL == "lenet5":
     client_models = [mdl.LeNet5(meta["in_dimension"][0], meta["n_class"]).to(DEVICE) for _ in range(N_CLIENTS)]
     client_models_kd = [mdl.LeNet5(meta["in_dimension"][0], meta["n_class"]).to(DEVICE) for _ in range(N_CLIENTS)]
 
-    # Performance tracker
+# Performance tracker
 perf_trackers = [hlp.PerfTracker(client_models[i], train_dl_list[i], val_dl_list[i], 
                                  CRITERION, meta["n_class"], 
                                  EXPORT_DIR + "/client_{}".format(i)) for i in range(N_CLIENTS)]
@@ -136,7 +144,7 @@ perf_trackers_kd = [hlp.PerfTracker(client_models_kd[i], train_dl_list[i], val_d
                                     EXPORT_DIR + "/client_{}_KD".format(i)) for i in range(N_CLIENTS)]
 
 
-# In[7]:
+# In[8]:
 
 
 #Each client updates its model locally on its own dataset (Standard)
@@ -147,31 +155,41 @@ for client_id in range(N_CLIENTS):
     model.train()
 
     #Local update
+    t_tot = 0
     for e in range(ROUNDS*EPOCHS_PER_ROUND):
+        t0 = time.time()
         for features, target in train_dl_list[client_id]:
             optimizer.zero_grad()
             output = model(features)
             loss = CRITERION(output, target)
             loss.backward()
             optimizer.step()
+        t1 = time.time()
         
         #Tracking performance
-        perf_trackers[client_id].new_eval()
-        print("\rClient {}: epoch {}/{} done.".format(client_id, e+1, ROUNDS*EPOCHS_PER_ROUND), end="  ")
-    print(" ")
-    
-# Visualization of training history
-user = 0
-perf_trackers[user].plot_training_history(metric="accuracy")
-perf_trackers[user].plot_training_history(metric="loss")
+        if e % N_EVAL == 0:
+            perf_trackers[client_id].new_eval(index=e)
+        t2 = time.time()
+        print("\rClient {}: epoch {}/{} done (Training time: {:.1f}s, Evaluation time: {:.1f}s).".format(client_id, e+1, ROUNDS*EPOCHS_PER_ROUND, t1-t0, t2-t1), end="  ")
+        t_tot += t2-t0
+    print("\nClient {} done. ({:.1f}s)".format(t_tot))    
 
 
 # In[8]:
 
 
+# Visualization of training history
+user = 1
+perf_trackers[user].plot_training_history(metric="accuracy")
+perf_trackers[user].plot_training_history(metric="loss")
+
+
+# In[9]:
+
+
 #Training phase
 for r in range(ROUNDS):
-
+    
     #Each client updates its model locally on its own dataset
     for client_id in range(N_CLIENTS):
         
@@ -188,6 +206,7 @@ for r in range(ROUNDS):
                 loss = CRITERION(output, target)
                 loss.backward()
                 optimizer.step()
+        print("\rRound {}/{}: Local update of client {} done.".format(r+1, ROUNDS, client_id), end=40*" ")
     
     # Blind learning (creation of input/output pairs)
     features_rand = torch.normal(0, 1, size=(N_CLIENTS, RANDOM_SAMPLES, *meta["in_dimension"])).to(DEVICE)
@@ -218,16 +237,17 @@ for r in range(ROUNDS):
                         loss.backward()
                         optimizer.step()
         #Tracking performance
-        perf_trackers_kd[client_id].new_eval()
-
-    print("\rRound {}/{} done.".format(r+1, ROUNDS), end="  ")
+        if r*EPOCHS_PER_ROUND % N_EVAL == 0:
+            perf_trackers_kd[client_id].new_eval(index=r*EPOCHS_PER_ROUND)
+        print("\rRound {}/{}: KD of client {} done.".format(r+1, ROUNDS, client_id), end=40*" ")
+    print("\rCommunication round {}/{} done.".format(r+1, ROUNDS), end=40*" ")
 # Visualization of training history
 user = 0
 perf_trackers_kd[user].plot_training_history(metric="accuracy")
 perf_trackers_kd[user].plot_training_history(metric="loss")
 
 
-# In[9]:
+# In[10]:
 
 
 fig, axs = plt.subplots(N_CLIENTS, 2, figsize=(10, 4*N_CLIENTS))
@@ -253,6 +273,12 @@ for i in range(N_CLIENTS):
     axs[i, 1].grid()
     
     fig.savefig(EXPORT_DIR + "/train_history.png", bbox_inches='tight')
+
+
+# In[16]:
+
+
+print(mdl.ResNet18(3, 10))
 
 
 # In[ ]:

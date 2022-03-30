@@ -1,19 +1,21 @@
-# --------------------------------------------------------------
-# This file contains the code used to run AI models on several
-# database.
+# -----------------------------------------------------------------------------
+# This file contains the helper code that was developped
+# during my master thesis at MIT.
 #
-# 2022 Frédéric Berdoz, Zurich, Switzerland
-# --------------------------------------------------------------
+# 2022 Frédéric Berdoz, Boston, USA
+# -----------------------------------------------------------------------------
 
 # Miscellaneous
-from datetime import datetime
-import copy
 import os
+from datetime import datetime
+import time
+import copy
 
 # Data processing
 import pandas as pd
 import numpy as np
 import scipy
+from sklearn.metrics import confusion_matrix
 
 # AI
 import torch
@@ -26,11 +28,29 @@ from torchvision import datasets
 # Visualization
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import confusion_matrix
 
 
-def load_data(dataset="MNIST", data_dir="./data", reduced=False, one_hot_labels=False, normalize=True, flatten=False, device="cpu"):
-    """Load the specified dataset."""
+
+def load_data(dataset="MNIST", data_dir="./data", reduced=False, 
+              one_hot_labels=False, normalize=True, flatten=False, device="cpu"):
+    """Load the specified dataset.
+    
+    Arguments:
+        - dataset: Name of the dataset to load.
+        - data_dir: Directory where to store (or load if already stored) the dataset.
+        - reduced: Boolean/'small'/'tiny'/float between 0 and 1. Reduce the dataset size.
+        - one_hot_lables: Wheter to convert labels into OHLs.
+        - normalize: Whether to normalize the data.
+        - flatten: Whether to flatten the data (i.g. for FC nets).
+        - device: Device where to ship the data.
+        
+    Returns:
+        - train_input: A tensor with the train features.
+        - train_target: A tensor with the train targets.
+        - test_input: A tensor with the test features.
+        - test_target: A tensor with the test targets.
+        - meta: A dictionry with useful metadata on the dataset.
+    """
     
     # Initialize meta data:
     meta = {"n_class": None,
@@ -40,9 +60,11 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False, one_hot_labels=
         # Load
         print("** Using CIFAR **")
         print("Load train data...")
-        cifar_train_set = datasets.CIFAR10(data_dir + '/cifar10/', train = True, download = True)
+        cifar_train_set = datasets.CIFAR10(data_dir + '/cifar10/', train=True,
+                                           download=True)
         print("Load validation data...")
-        cifar_test_set = datasets.CIFAR10(data_dir + '/cifar10/', train = False, download = True)
+        cifar_test_set = datasets.CIFAR10(data_dir + '/cifar10/', train=False,
+                                          download=True)
 
         # Process train data
         train_input = torch.from_numpy(cifar_train_set.data)
@@ -81,14 +103,30 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False, one_hot_labels=
         train_input = train_input.clone().reshape(train_input.size(0), -1)
         test_input = test_input.clone().reshape(test_input.size(0), -1)
 
-    if reduced:
-        train_input = train_input.narrow(0, 0, 1000)
-        train_target = train_target.narrow(0, 0, 1000)
-        test_input = test_input.narrow(0, 0, 200)
-        test_target = test_target.narrow(0, 0, 200)
-
-    print("Dataset sizes:\n\t- Train: {}\n\t- Valitation {}".format(tuple(train_input.shape), 
-                                                                    tuple(test_input.shape)))
+    if reduced == "small" or reduced is True:
+        train_input = train_input.narrow(0, 0, 2000)
+        train_target = train_target.narrow(0, 0, 2000)
+        test_input = test_input.narrow(0, 0, 500)
+        test_target = test_target.narrow(0, 0, 500)
+    
+    elif reduced == "tiny":
+        train_input = train_input.narrow(0, 0, 400)
+        train_target = train_target.narrow(0, 0, 400)
+        test_input = test_input.narrow(0, 0, 100)
+        test_target = test_target.narrow(0, 0, 100)
+    
+    elif isinstance(reduced, float) and reduced > 0 and reduced < 1.0:
+        n_tr = int(reduced * train_input.shape[0])
+        n_te = int(reduced * test_input.shape[0])
+        
+        train_input = train_input.narrow(0, 0, n_tr)
+        train_target = train_target.narrow(0, 0, n_tr)
+        test_input = test_input.narrow(0, 0, n_te)
+        test_target = test_target.narrow(0, 0, n_te)
+    else:
+        raise Valueerror("'reduced' parameter not valid.")
+        
+    print("Dataset sizes:\n\t- Train: {}\n\t- Validation {}".format(tuple(train_input.shape), tuple(test_input.shape)))
 
     if one_hot_labels:
         train_target = convert_to_one_hot_labels(train_input, train_target)
@@ -102,11 +140,17 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False, one_hot_labels=
     # Update metadata
     meta["in_dimension"] = train_input.shape[1:]
     
-    return train_input.to(device), train_target.to(device), test_input.to(device), test_target.to(device), meta
+    return train_input.to(device), train_target.to(device),test_input.to(device), test_target.to(device), meta
 
 class ImageDataset(torch.utils.data.Dataset):
     """Custom dataset wrapper."""
     def __init__(self, features, targets):
+        """Constructor.
+        
+        Arguments:
+            - features: A tensor contaiing the features aligned in the 0th dimension.
+            - targets: A tensor contaiing the targets aligned in the 0th dimension.
+        """
         super(ImageDataset, self).__init__()
         self.features = features
         self.targets = targets
@@ -333,7 +377,16 @@ def visualize_class_dist(ds_list, n_class, title=None, savepath=None):
         fig.savefig(savepath, bbox_inches='tight')
         
 def ds_to_dl(datasets, batch_size=None, shuffle=True):
-    """Create a (list of) torch dataloader(s) given a (list of) dataset(s)"""
+    """Create a (list of) torch dataloader(s) given a (list of) dataset(s).
+    
+    Arguments:
+        - datasets: A torch dataset (or a list of torch datasets).
+        - batch_size: The batch size to use in the dataloader.
+        - shuffle: Wheter to shuffle the dataset after each epoch.
+    Return:
+        - dl: A torch dataloader (or a list of torch dataloaders).
+    
+    """
 
     if isinstance(datasets, list):
         if batch_size is None:
@@ -358,8 +411,7 @@ def evaluate_model(model, data_loader, criterion, n_class=None):
         - criterion: Loss function (not evaluated if None).
         - n_class: Number of class for classification. Treated as regression if None.
     Return:
-        - loss: The loss of the predictions compared to the targets.
-        - cm: the confusion matrix
+        - perf: A dictionary containing the different performance metrics.
     """
     # Initialize performance dictionary
     perf = {}
@@ -371,8 +423,10 @@ def evaluate_model(model, data_loader, criterion, n_class=None):
     perf["loss"] = criterion(pred, targets).numpy()
     
     if n_class is not None and n_class > 0:
-        perf["confusion matrix"] = confusion_matrix(pred.argmax(dim=1), 
-                                                    targets, labels=range(n_class))
+        cm = confusion_matrix(pred.argmax(dim=1), targets, labels=range(n_class))
+        perf["confusion matrix"] = cm
+        perf["accuracy"] = np.trace(cm, axis1=0, axis2=1) / np.sum(cm, axis=(0,1))
+        
     elif n_class is None:
         raise NotImplementedError
     else:
@@ -382,7 +436,7 @@ def evaluate_model(model, data_loader, criterion, n_class=None):
     
 class PerfTracker():
     """Track train and validation performace of a given model during training."""
-    def __init__(self, model, dl_tr, dl_val, criterion, n_class, export_dir):
+    def __init__(self, model, dl_tr, dl_val, criterion, n_class, export_dir, ID="N/A"):
         """Constructor.
         
         Arguments:
@@ -392,20 +446,23 @@ class PerfTracker():
             - criterion: Loss function.
             - n_class: Number of class for classification. Treated as regression if None.
             - export_dir: Directory to save model and plots.
+            - ID: ID of the performance tracker (useful when the are plotted against eachother).
         """
         #  Assigning the attributes
         self.model = model
-        self.best_model = copy.deepcopy(model)
         self.dl_tr = dl_tr
         self.dl_val = dl_val
         self.criterion = criterion
         self.n_class = n_class
         self.directory = export_dir
         self.index = [0]
-        self.perf_history_tr = {metric : np.expand_dims(value, 0) 
-                                for metric, value in evaluate_model(model, dl_tr, criterion, n_class).items()}
-        self.perf_history_val = {metric : np.expand_dims(value, 0) 
-                                 for metric, value in evaluate_model(model, dl_val, criterion, n_class).items()}
+        self.ID = ID
+        
+        perf_tr = evaluate_model(model, dl_tr, criterion, n_class)
+        perf_val = evaluate_model(model, dl_val, criterion, n_class)
+        
+        self.perf_history_tr = {metric : np.expand_dims(value, 0) for metric, value in perf_tr.items()}
+        self.perf_history_val = {metric : np.expand_dims(value, 0) for metric, value in perf_val.items()}
         
         # Creating the directory for exports
         os.makedirs(self.directory, exist_ok=True)
@@ -413,8 +470,10 @@ class PerfTracker():
         # Initializing the minimum loss to store the best model
         self.loss_min = float("inf")
         
-        
-    def new_eval(self, index=None, checkpoints=True):
+        # Initialize checkpoint
+        self.best_model = copy.deepcopy(model)
+
+    def new_eval(self, index=None):
         """Function to call in each epoch.
         
         Arguments:
@@ -428,7 +487,7 @@ class PerfTracker():
         perf_val = evaluate_model(self.model, self.dl_val, self.criterion, self.n_class)
         
         # Save model if validation performance is the best so far
-        if perf_val["loss"] < self.loss_min and checkpoints:
+        if perf_val["loss"] < self.loss_min:
             torch.save(self.model.state_dict(), self.directory + "/model.pt")
             self.loss_min = perf_val["loss"]
             self.best_model = copy.deepcopy(self.model)
@@ -448,26 +507,23 @@ class PerfTracker():
             
         return perf_tr, perf_val
 
-    def plot_training_history(self, metric="loss", save=False):
-        """PLot the training history.
+    def plot_training_history(self, metric="loss", savepath=None):
+        """Plot the training history.
         
         Arguments:
             - metrics: metrics to plot.
-            - save: Boolean. Whether to save the plot.
+            - savepath: filepath (and filename) where the plot must be stored. Not stored if None is given.
         """
         
         fig, ax = plt.subplots(1, 1, figsize=(6, 4))
         ax.set_title("Training History")
         
-        if metric == "loss":
-            metric_tr = self.perf_history_tr["loss"]
-            metric_val = self.perf_history_val["loss"]
-        elif metric == "accuracy":
-            cm_tr = self.perf_history_tr["confusion matrix"]
-            cm_val = self.perf_history_val["confusion matrix"]
-            metric_tr = np.trace(cm_tr, axis1=1, axis2=2) / np.sum(cm_tr, axis=(1,2))
-            metric_val = np.trace(cm_val, axis1=1, axis2=2) / np.sum(cm_val, axis=(1,2))
-        
+        if metric == "confusion matrix":
+            raise NotImplementedError
+        else:
+            metric_tr = self.perf_history_tr[metric]
+            metric_val = self.perf_history_val[metric]
+            
         ax.plot(self.index, metric_tr, label="Train")
         ax.plot(self.index, metric_val, label="Validation")
         ax.legend(loc="lower right")
@@ -475,11 +531,45 @@ class PerfTracker():
         ax.set_ylabel(metric)
 
         # Save the figure at given location
-        if save:
-            fig.savefig(self.directory + "/train_history.png", bbox_inches='tight')
+        if savepath is not None:
+            fig.savefig(savepath, bbox_inches='tight')
+            
+    def plot_confusion_matrix(self, index=-1, savepath=None):
+        """Plot a heatmap of the confusion matrices (on the train and validation data).
+        
+        Arguments:
+            - index: Index at which to cumpute the correlation matrix (usually epoch/round).
+            - savepath: filepath (and filename) where the plot must be stored. Not stored if None is given.
+        """
+        # Figure creation
+        fig, axs = plt.subplots(1, 2, figsize=(10.5, 5))
 
-
-def infer(model, data_loader, form="numpy"):
+        # Plot the heatmap 
+        #axs[0].imshow(self.perf_history_tr["confusion matrix"][index], cmap="Blues")
+        #axs[1].imshow(self.perf_history_val["confusion matrix"][index])
+        sns.heatmap(self.perf_history_tr["confusion matrix"][index], cmap="Blues", 
+                    annot=True, ax=axs[0], cbar=False, fmt='d', annot_kws={"fontsize":"small"})
+        sns.heatmap(self.perf_history_val["confusion matrix"][index], cmap="Blues", 
+                    annot=True, ax=axs[1], cbar=False, fmt='d', annot_kws={"fontsize":"small"})
+        
+        # Annotation
+        fig.suptitle("Confusion Matrix ({})".format(self.ID))
+        axs[0].set_title("Train Dataset")
+        axs[1].set_title("Validation Dataset")
+        axs[0].set_ylabel("True label")
+        axs[1].set_ylabel("True label")
+        axs[0].set_xlabel("Predicted label")
+        axs[1].set_xlabel("Predicted label")
+        
+        # Show ax frame for clarity
+        [spine.set_visible(True) for spine in axs[0].spines.values()]
+        [spine.set_visible(True) for spine in axs[1].spines.values()]
+        
+        # Save the figure at given location
+        if savepath is not None:
+            fig.savefig(savepath, bbox_inches='tight')
+            
+def infer(model, data_loader, form="numpy", normalize=False, classify=False):
     """Function to streamline the inference of a data sample through the given model.
     
     Arguments:
@@ -488,33 +578,54 @@ def infer(model, data_loader, form="numpy"):
         - form: Type of output. Either 'torch' or 'numpy'.
     Return:
         - List of predictions and targets.
-    """
-    
-    # Initiallize output lists
-    predictions_list = []
-    targets_list = []
-    
+    """ 
     # Inference
     model.eval()
     with torch.no_grad():
-        for data, target in data_loader:
-            # Infer
-            output = model(data)
-            
-            # Store batch results
-            targets_list.append(target)
-            predictions_list.append(output)    
-    
-    # Processing outputs
-    predictions = torch.cat(predictions_list)
-    targets = torch.cat(targets_list)
+        predictions = model(data_loader.dataset.features).cpu()
+        targets = data_loader.dataset.targets.squeeze().cpu()
     model.train()
     
+    if normalize:
+        predictions = F.softmax(predictions, dim=1)
+    
+    if classify:
+        predictions = predictions.argmax(dim=1)
+    
     if form == "numpy":
-        return predictions.squeeze().cpu().numpy(), targets.squeeze().cpu().numpy()
+        return predictions.numpy(), targets.numpy()
     elif form == "torch":
-        return predictions.squeeze().cpu(), targets.squeeze().cpu()
+        return predictions, targets
     
     
-def foo():
-    print("ok")
+def plot_global_training_history(perf_trackers, metric, savepath=None):
+    """Plot the training history of multiple performance trackers.
+    
+    Arguments:
+        - perf_trackers: A list of PerfTracker objects.
+        - metric: The metric to plot.
+        - savepath: The savepath (with filename) where to store the figure. Not stored if None is given.
+    """
+    fig, ax = plt.subplots(1, 1, figsize=(6, 4))
+    ax.set_title("Training History")
+    
+    for pt in perf_trackers:
+        if metric == "confusion matrix":
+            raise NotImplementedError
+        else:
+            metric_tr = pt.perf_history_tr[metric]
+            metric_val = pt.perf_history_val[metric]
+
+        ax.plot(pt.index, metric_tr, label="{} (Train)".format(pt.ID))
+        ax.plot(pt.index, metric_val, label="{} (Validation)".format(pt.ID))
+    
+    ax.legend(loc="best")
+    ax.grid()
+    ax.set_ylabel(metric)
+
+    # Save the figure at given location
+    if savepath is not None:
+        fig.savefig(savepath, bbox_inches='tight')
+
+   
+    
