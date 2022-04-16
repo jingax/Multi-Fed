@@ -51,6 +51,7 @@ def run_shadow_learning(n_clients, task, reg_coeff=1, generator="normal", n_rand
     
     # Check avaibale device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("Device: ", device)
     
     # Measure time
     t0 = time.time()
@@ -121,8 +122,10 @@ def run_shadow_learning(n_clients, task, reg_coeff=1, generator="normal", n_rand
                 incident_edges = topology[i]
                 predictions_others = [KD_outputs[i] for i, key in enumerate(incident_edges) if key == 1]
                 input_others = [KD_inputs[i] for i, key in enumerate(incident_edges) if key == 1]
-
-            #Teacher learning
+                predictions_others = torch.cat(predictions_others)
+                input_others = torch.cat(input_others)
+           
+        #Teacher learning
             for e in range(epoch_per_round):
 
                 # Training
@@ -132,8 +135,9 @@ def run_shadow_learning(n_clients, task, reg_coeff=1, generator="normal", n_rand
                     
                     # Optimizing when no KD
                     if reg_coeff != 0 and n_rand > 0:
-                        predictions_local = [model(X) for X in input_others]
-                        loss = criterion(output, target, predictions_local, predictions_others)
+                        selected_inputs  = torch.randperm(input_others.shape[0])[:batch_size]
+                        predictions_local = model(input_others[selected_inputs])
+                        loss = criterion(output, target, predictions_local, predictions_others[selected_inputs])
                     else:
                         loss = criterion_vanilla(output, target)
                     loss.backward()
@@ -161,6 +165,7 @@ def run_fedavg(n_clients, task, alpha="uniform", rounds=100, batch_size=32,
     
     # Check avaibale device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("Device: ", device)
     
     # Measure time
     t0 = time.time()

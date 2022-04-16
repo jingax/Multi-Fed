@@ -713,16 +713,16 @@ class KDLoss(nn.Module):
         
         # KD Loss
         if reg_loss == "KL":
-            self.loss_KD = nn.KLDivLoss(reduction="none")
+            self.loss_KD = nn.KLDivLoss()
         elif reg_loss == "MSE":
-            self.loss_KD = nn.MSELoss(reduction="none")
+            self.loss_KD = nn.MSELoss()
         
         # Members
         self.main_loss_type = main_loss
         self.reg_loss_type = reg_loss
         self.coeff = coeff        
  
-    def forward(self, predictions, targets, predictions_local, predictions_others):
+    def forward(self, predictions, targets, Y_logit, Y_other_logit):
         """Forward pass. 
         
         Argument:
@@ -737,25 +737,21 @@ class KDLoss(nn.Module):
         """
         # Loss on local data
         loss = self.loss(predictions, targets)
-        
-        if predictions_local and predictions_others:
-            # Initialization
-            loss_kd = 0
-            count = 0
-            for Y_logit, Y_other_logit in zip(predictions_local, predictions_others):
-                
-                # Compute class probabilities
-                Y = F.softmax(Y_logit, dim=1)
-                Y_other = F.softmax(Y_other_logit, dim=1)
+                    
+        # Initialization
+        loss_kd = 0
 
-                if self.reg_loss_type == "KL":
-                    loss_kd += self.loss_KD(torch.log(Y), Y_other).sum()
-                elif self.reg_loss_type == "MSE":
-                    loss_kd += self.loss_KD(Y_logit, Y_other_logit).sum()
-                count += Y.shape[0]
+        # Compute class probabilities
+        Y = F.softmax(Y_logit, dim=1)
+        Y_other = F.softmax(Y_other_logit, dim=1)
 
-            # Normalize to make it independant wrt the number of collaborators.
-            loss +=  (self.coeff * loss_kd / count)
+        if self.reg_loss_type == "KL":
+            loss_kd += self.loss_KD(torch.log(Y), Y_other)
+        elif self.reg_loss_type == "MSE":
+            loss_kd += self.loss_KD(Y_logit, Y_other_logit)
+
+        # Normalize to make it independant wrt the number of collaborators.
+        loss += self.coeff * loss_kd 
             
         return  loss
     
