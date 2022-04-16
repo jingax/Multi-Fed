@@ -10,12 +10,15 @@ import os
 from datetime import datetime
 import time
 import copy
+import random
 
 # Data processing
 import pandas as pd
 import numpy as np
 import scipy
+import cv2
 from sklearn.metrics import confusion_matrix
+from sklearn.metrics.pairwise import euclidean_distances
 
 # AI
 import torch
@@ -31,16 +34,15 @@ import seaborn as sns
 
 
 
-def load_data(dataset="MNIST", data_dir="./data", reduced=False, 
-              one_hot_labels=False, normalize=True, flatten=False, device="cpu"):
+def load_data(dataset="MNIST", data_dir="./data", reduced=False
+              , normalize="image-wise", flatten=False, device="cpu"):
     """Load the specified dataset.
     
     Arguments:
         - dataset: Name of the dataset to load.
         - data_dir: Directory where to store (or load if already stored) the dataset.
         - reduced: Boolean/'small'/'tiny'/float between 0 and 1. Reduce the dataset size.
-        - one_hot_lables: Wheter to convert labels into OHLs.
-        - normalize: Whether to normalize the data.
+        - normalize: Whether to normalize the data ('image-wise', 'channel-wise' or 'sample-wise').
         - flatten: Whether to flatten the data (i.g. for FC nets).
         - device: Device where to ship the data.
         
@@ -60,11 +62,9 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False,
         # Load
         print("** Using CIFAR **")
         print("Load train data...")
-        cifar_train_set = datasets.CIFAR10(data_dir + '/cifar10/', train=True,
-                                           download=True)
+        cifar_train_set = datasets.CIFAR10(data_dir + '/cifar10/', train=True,download=True)
         print("Load validation data...")
-        cifar_test_set = datasets.CIFAR10(data_dir + '/cifar10/', train=False,
-                                          download=True)
+        cifar_test_set = datasets.CIFAR10(data_dir + '/cifar10/', train=False,download=True)
 
         # Process train data
         train_input = torch.from_numpy(cifar_train_set.data)
@@ -78,13 +78,52 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False,
         
         # Update metadata
         meta["n_class"] = 10
+    
+    elif dataset == "CIFAR100":
+        # Load
+        print("** Using CIFAR **")
+        print("Load train data...")
+        cifar_train_set = datasets.CIFAR100(data_dir + '/cifar100/', train=True,download=True)
+        print("Load validation data...")
+        cifar_test_set = datasets.CIFAR100(data_dir + '/cifar100/', train=False,download=True)
 
+        # Process train data
+        train_input = torch.from_numpy(cifar_train_set.data)
+        train_input = train_input.transpose(3, 1).transpose(2, 3).float()
+        train_target = torch.tensor(cifar_train_set.targets, dtype=torch.int64)
+        
+        # Process validation data
+        test_input = torch.from_numpy(cifar_test_set.data).float()
+        test_input = test_input.transpose(3, 1).transpose(2, 3).float()
+        test_target = torch.tensor(cifar_test_set.targets, dtype=torch.int64)
+        
+        # Update metadata
+        meta["n_class"] = 100
+        
     elif dataset == "MNIST":
         print("** Using MNIST **")
         print("Load train data...")
         mnist_train_set = datasets.MNIST(data_dir, train=True, download=True)
         print("Load validation data...")
         mnist_test_set = datasets.MNIST(data_dir, train=False, download=True)
+
+        # Process train data
+        train_input = mnist_train_set.data.view(-1, 1, 28, 28).float()
+        train_target = mnist_train_set.targets
+        
+        # Process validation data
+        test_input = mnist_test_set.data.view(-1, 1, 28, 28).float()
+        test_target = mnist_test_set.targets
+        
+        # Update metadata
+        meta["n_class"] = 10
+    
+    elif dataset == "FMNIST":
+        print("** Using FMNIST **")
+        print("Load train data...")
+        mnist_train_set = datasets.FashionMNIST(data_dir, train=True, download=True)
+        print("Load validation data...")
+        mnist_test_set = datasets.FashionMNIST(data_dir, train=False, download=True)
 
         # Process train data
         train_input = mnist_train_set.data.view(-1, 1, 28, 28).float()
@@ -123,26 +162,34 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False,
         train_target = train_target.narrow(0, 0, n_tr)
         test_input = test_input.narrow(0, 0, n_te)
         test_target = test_target.narrow(0, 0, n_te)
-    else:
-        raise Valueerror("'reduced' parameter not valid.")
         
     print("Dataset sizes:\n\t- Train: {}\n\t- Validation {}".format(tuple(train_input.shape), tuple(test_input.shape)))
 
-    if one_hot_labels:
-        train_target = convert_to_one_hot_labels(train_input, train_target)
-        test_target = convert_to_one_hot_labels(test_input, test_target)
-
-    if normalize:
+    if normalize == "channel-wise":
+        dims = [i for i in range(test.dim()) if i != 1]
+        mu = train_input.mean(dim=dims, keepdim=True)
+        sig = train_input.std(dim=dims, keepdim=True)
+        train_input.sub_(mu).div_(std)
+        test_input.sub_(mu).div_(std)
+        
+    elif normalize == "image-wise":
         mu, std = train_input.mean(), train_input.std()
         train_input.sub_(mu).div_(std)
         test_input.sub_(mu).div_(std)
 
+    elif normalize == "sample-wise":
+        dims = [i for i in range(test.dim()) if i != 0]
+        mu = train_input.mean(dim=dims, keepdim=True)
+        sig = train_input.std(dim=dims, keepdim=True)
+        train_input.sub_(mu).div_(std)
+        test_input.sub_(mu).div_(std)
+        
     # Update metadata
     meta["in_dimension"] = train_input.shape[1:]
     
-    return train_input.to(device), train_target.to(device),test_input.to(device), test_target.to(device), meta
+    return train_input.to(device), train_target.to(device), test_input.to(device), test_target.to(device), meta
 
-class ImageDataset(torch.utils.data.Dataset):
+class CustomDataset(torch.utils.data.Dataset):
     """Custom dataset wrapper."""
     def __init__(self, features, targets):
         """Constructor.
@@ -151,7 +198,7 @@ class ImageDataset(torch.utils.data.Dataset):
             - features: A tensor contaiing the features aligned in the 0th dimension.
             - targets: A tensor contaiing the targets aligned in the 0th dimension.
         """
-        super(ImageDataset, self).__init__()
+        super(CustomDataset, self).__init__()
         self.features = features
         self.targets = targets
         self.len = features.shape[0]
@@ -329,9 +376,9 @@ def split_dataset(n_clients, train_ds, val_ds, alpha, sizes=None):
                 index_class_val = index_class_val[val_dist[client_id, c]:]
 
     for client_id in range(n_clients):
-        train_ds_list.append(ImageDataset(torch.cat(train_x_list[client_id], dim=0),
+        train_ds_list.append(CustomDataset(torch.cat(train_x_list[client_id], dim=0),
                                               torch.cat(train_y_list[client_id], dim=0)))
-        val_ds_list.append(ImageDataset(torch.cat(val_x_list[client_id], dim=0),
+        val_ds_list.append(CustomDataset(torch.cat(val_x_list[client_id], dim=0),
                                             torch.cat(val_y_list[client_id], dim=0)))
 
     return train_ds_list, val_ds_list
@@ -368,7 +415,9 @@ def visualize_class_dist(ds_list, n_class, title=None, savepath=None):
         ax.barh(labels, class_dist[:, class_id], left=starts, 
                 color=category_colors[class_id], label=class_id)
         starts = class_cum[:, class_id]
-    ax.legend(range(n_class), bbox_to_anchor=(1.02, 1), loc='upper left')
+    
+    if n_class < 17:
+        ax.legend(range(n_class), bbox_to_anchor=(1.02, 1), loc='upper left')
     
     if title is not None:
         ax.set_title(title)
@@ -400,7 +449,7 @@ def ds_to_dl(datasets, batch_size=None, shuffle=True):
             dl = torch.utils.data.DataLoader(datasets, batch_size=batch_size, shuffle=shuffle)
     return dl
 
-def evaluate_model(model, data_loader, criterion, n_class=None):
+def evaluate_model(model, data_loader, criterion, n_class):
     """
     Compute loss and different performance metric of a single model using a data_loader.
     Returns a dictionary.
@@ -423,7 +472,7 @@ def evaluate_model(model, data_loader, criterion, n_class=None):
     perf["loss"] = criterion(pred, targets).numpy()
     
     if n_class is not None and n_class > 0:
-        cm = confusion_matrix(pred.argmax(dim=1), targets, labels=range(n_class))
+        cm = confusion_matrix(targets, pred.argmax(dim=1), labels=range(n_class))
         perf["confusion matrix"] = cm
         perf["accuracy"] = np.trace(cm, axis1=0, axis2=1) / np.sum(cm, axis=(0,1))
         
@@ -436,7 +485,7 @@ def evaluate_model(model, data_loader, criterion, n_class=None):
     
 class PerfTracker():
     """Track train and validation performace of a given model during training."""
-    def __init__(self, model, dl_tr, dl_val, criterion, n_class, export_dir, ID="N/A"):
+    def __init__(self, model, dl_dict, criterion, n_class, export_dir=None, ID="N/A"):
         """Constructor.
         
         Arguments:
@@ -445,33 +494,27 @@ class PerfTracker():
             - dl_val: Torch dalatoader (validation data).
             - criterion: Loss function.
             - n_class: Number of class for classification. Treated as regression if None.
-            - export_dir: Directory to save model and plots.
+            - export_dir: Export directory.
             - ID: ID of the performance tracker (useful when the are plotted against eachother).
         """
         #  Assigning the attributes
         self.model = model
-        self.dl_tr = dl_tr
-        self.dl_val = dl_val
+        self.dl_dict = dl_dict
         self.criterion = criterion
         self.n_class = n_class
         self.directory = export_dir
         self.index = [0]
         self.ID = ID
         
-        perf_tr = evaluate_model(model, dl_tr, criterion, n_class)
-        perf_val = evaluate_model(model, dl_val, criterion, n_class)
-        
-        self.perf_history_tr = {metric : np.expand_dims(value, 0) for metric, value in perf_tr.items()}
-        self.perf_history_val = {metric : np.expand_dims(value, 0) for metric, value in perf_val.items()}
+        self.perf_histories = {}
+        for key, dl in self.dl_dict.items():
+            perf = evaluate_model(self.model, dl, self.criterion, self.n_class)
+            self.perf_histories[key] = {metric : np.expand_dims(value, 0) for metric, value in perf.items()}
         
         # Creating the directory for exports
-        os.makedirs(self.directory, exist_ok=True)
-        
-        # Initializing the minimum loss to store the best model
-        self.loss_min = float("inf")
-        
-        # Initialize checkpoint
-        self.best_model = copy.deepcopy(model)
+        if self.directory is not None:
+            os.makedirs(self.directory, exist_ok=True)
+
 
     def new_eval(self, index=None):
         """Function to call in each epoch.
@@ -479,39 +522,30 @@ class PerfTracker():
         Arguments:
             - index: Index of the new entry in the training history.
         Return:
-            - perf_tr, perf_val: performance of the model at this epoch.
+            - current_perf: Various performance of the model at thise epoch.
         """
+    
+        # Compute performance and add it to the performance histories
+        current_perf = {}
+        for key, dl in self.dl_dict.items():
+            perf = evaluate_model(self.model, dl, self.criterion, self.n_class)
+            current_perf[key] = perf
+            for metric, value in perf.items():
+                self.perf_histories[key][metric] = np.concatenate((self.perf_histories[key][metric], np.expand_dims(value, 0)), axis=0)
         
-        # Compute performance
-        perf_tr = evaluate_model(self.model, self.dl_tr, self.criterion, self.n_class)
-        perf_val = evaluate_model(self.model, self.dl_val, self.criterion, self.n_class)
-        
-        # Save model if validation performance is the best so far
-        if perf_val["loss"] < self.loss_min:
-            torch.save(self.model.state_dict(), self.directory + "/model.pt")
-            self.loss_min = perf_val["loss"]
-            self.best_model = copy.deepcopy(self.model)
-        
-        # Append performance metric
-        for metric, value in perf_tr.items():
-            self.perf_history_tr[metric] = np.concatenate((self.perf_history_tr[metric], 
-                                                           np.expand_dims(value, 0)), axis=0)
-        
-        for metric, value in perf_val.items():
-            self.perf_history_val[metric] = np.concatenate((self.perf_history_val[metric], 
-                                                            np.expand_dims(value, 0)), axis=0)
-        
+        # Update index
         if index is None:
             index = self.index[-1] + 1
         self.index.append(index)
             
-        return perf_tr, perf_val
+        return current_perf
 
-    def plot_training_history(self, metric="loss", savepath=None):
+    def plot_training_history(self, metric="loss", logscale=False, savepath=None):
         """Plot the training history.
         
         Arguments:
             - metrics: metrics to plot.
+            - logscale: Bollean, wheather to set y-axis to log scale.
             - savepath: filepath (and filename) where the plot must be stored. Not stored if None is given.
         """
         
@@ -520,16 +554,17 @@ class PerfTracker():
         
         if metric == "confusion matrix":
             raise NotImplementedError
-        else:
-            metric_tr = self.perf_history_tr[metric]
-            metric_val = self.perf_history_val[metric]
+        
+        for key, perf_dict in self.perf_histories.items():
+            ax.plot(self.index, perf_dict[metric], label=key)
+            ax.legend(loc="best")
+            ax.grid(True, which="both")
+            ax.set_ylabel(metric)
+        
+        # Set y-axis to logscale
+        if logscale:
+            ax.set_yscale('log')
             
-        ax.plot(self.index, metric_tr, label="Train")
-        ax.plot(self.index, metric_val, label="Validation")
-        ax.legend(loc="lower right")
-        ax.grid()
-        ax.set_ylabel(metric)
-
         # Save the figure at given location
         if savepath is not None:
             fig.savefig(savepath, bbox_inches='tight')
@@ -542,28 +577,24 @@ class PerfTracker():
             - savepath: filepath (and filename) where the plot must be stored. Not stored if None is given.
         """
         # Figure creation
-        fig, axs = plt.subplots(1, 2, figsize=(10.5, 5))
-
-        # Plot the heatmap 
-        #axs[0].imshow(self.perf_history_tr["confusion matrix"][index], cmap="Blues")
-        #axs[1].imshow(self.perf_history_val["confusion matrix"][index])
-        sns.heatmap(self.perf_history_tr["confusion matrix"][index], cmap="Blues", 
-                    annot=True, ax=axs[0], cbar=False, fmt='d', annot_kws={"fontsize":"small"})
-        sns.heatmap(self.perf_history_val["confusion matrix"][index], cmap="Blues", 
-                    annot=True, ax=axs[1], cbar=False, fmt='d', annot_kws={"fontsize":"small"})
-        
-        # Annotation
+        n_datasets = len(self.perf_histories)
+        fig, axs = plt.subplots(1, n_datasets, figsize=(5 * n_datasets, 5))
         fig.suptitle("Confusion Matrix ({})".format(self.ID))
-        axs[0].set_title("Train Dataset")
-        axs[1].set_title("Validation Dataset")
-        axs[0].set_ylabel("True label")
-        axs[1].set_ylabel("True label")
-        axs[0].set_xlabel("Predicted label")
-        axs[1].set_xlabel("Predicted label")
         
-        # Show ax frame for clarity
-        [spine.set_visible(True) for spine in axs[0].spines.values()]
-        [spine.set_visible(True) for spine in axs[1].spines.values()]
+        # Plot the heatmap 
+        for i, (key, perf_dict) in enumerate(self.perf_histories.items()):
+            #axs[0].imshow(self.perf_history_tr["confusion matrix"][index], cmap="Blues")
+            #axs[1].imshow(self.perf_history_val["confusion matrix"][index])
+            sns.heatmap(perf_dict["confusion matrix"][index], cmap="Blues", 
+                        annot=True, ax=axs[i], cbar=False, fmt='d', annot_kws={"fontsize":"small"})
+
+            # Annotation
+            axs[i].set_title("{} Dataset".format(key))
+            axs[i].set_ylabel("True label")
+            axs[i].set_xlabel("Predicted label")
+
+            # Show ax frame for clarity
+            [spine.set_visible(True) for spine in axs[i].spines.values()]
         
         # Save the figure at given location
         if savepath is not None:
@@ -585,7 +616,6 @@ def infer(model, data_loader, form="numpy", normalize=False, classify=False):
         predictions = model(data_loader.dataset.features).cpu()
         targets = data_loader.dataset.targets.squeeze().cpu()
     model.train()
-    
     if normalize:
         predictions = F.softmax(predictions, dim=1)
     
@@ -598,12 +628,13 @@ def infer(model, data_loader, form="numpy", normalize=False, classify=False):
         return predictions, targets
     
     
-def plot_global_training_history(perf_trackers, metric, savepath=None):
+def plot_global_training_history(perf_trackers, metric, title=None, logscale=False, savepath=None):
     """Plot the training history of multiple performance trackers.
     
     Arguments:
         - perf_trackers: A list of PerfTracker objects.
         - metric: The metric to plot.
+        - logscale: Bollean, wheather to set y-axis to log scale.
         - savepath: The savepath (with filename) where to store the figure. Not stored if None is given.
     """
     fig, ax = plt.subplots(1, 1, figsize=(6, 4))
@@ -612,20 +643,244 @@ def plot_global_training_history(perf_trackers, metric, savepath=None):
     for pt in perf_trackers:
         if metric == "confusion matrix":
             raise NotImplementedError
-        else:
-            metric_tr = pt.perf_history_tr[metric]
-            metric_val = pt.perf_history_val[metric]
-
-        ax.plot(pt.index, metric_tr, label="{} (Train)".format(pt.ID))
-        ax.plot(pt.index, metric_val, label="{} (Validation)".format(pt.ID))
+    
+        for key, perf_dict in pt.perf_histories.items():
+            ax.plot(pt.index, perf_dict[metric], label="{} ({})".format(pt.ID, key))
     
     ax.legend(loc="best")
-    ax.grid()
+    ax.grid(True, which="both")
     ax.set_ylabel(metric)
+    
+    # Set y-axis to logscale
+    if logscale:
+        ax.set_yscale('log')
+    
+    if title is not None:
+        ax.set_title(title)
 
     # Save the figure at given location
     if savepath is not None:
         fig.savefig(savepath, bbox_inches='tight')
 
-   
+
+def distance_correlation(X, Y):
+    """Compute the distance correlation between the data X and Y.
     
+    Arguments:
+        - X: 1st data (samples along dim 0 and features along dim 1).
+        - Y: 2nd data (samples along dim 0 and features along dim 1).
+    
+    Return:
+        - dCorr: The distance correlation between X and Y.
+    """
+    n = X.shape[0]
+    A = euclidean_distances(X, X)
+    B = euclidean_distances(Y, Y)
+    
+    A = A - A.mean(axis=0, keepdims=True) - A.mean(axis=1, keepdims=True) + A.mean()
+    B = B - B.mean(axis=0, keepdims=True) - B.mean(axis=1, keepdims=True) + B.mean()
+    
+    dVarX = np.multiply(A, A).sum() / (n**2)
+    dVarY = np.multiply(B, B).sum() / (n**2)
+    dCov = np.multiply(A, B).sum() / (n**2)
+    
+    dCorr = dCov / np.sqrt(dVarX * dVarY)
+
+    return dCorr
+    
+class KDLoss(nn.Module):
+    """Custom loss function for federated knowledge KD."""
+    
+    def __init__(self, main_loss="cross-entropy", reg_loss="KL", coeff=1):
+        """Class constructor.
+        
+        Arguments:
+            - main_loss: Main loss (either 'cross-entropy' or 'MSE').
+            - reg_loss: Secondary loss (either 'KL' or 'MSE').
+            - coeff: Lambda coefficient in the loss.
+        Returns:
+            - self: The class instance
+        """
+        super(KDLoss, self).__init__()
+        
+        # Main loss
+        if main_loss == "cross-entropy":
+            self.loss = nn.CrossEntropyLoss()
+        elif main_loss == "MSE":
+            self.loss = nn.MSELoss()
+        else:
+            raise ValueError("Given loss is not valid.")
+        
+        # KD Loss
+        if reg_loss == "KL":
+            self.loss_KD = nn.KLDivLoss(reduction="none")
+        elif reg_loss == "MSE":
+            self.loss_KD = nn.MSELoss(reduction="none")
+        
+        # Members
+        self.main_loss_type = main_loss
+        self.reg_loss_type = reg_loss
+        self.coeff = coeff        
+ 
+    def forward(self, predictions, targets, predictions_local, predictions_others):
+        """Forward pass. 
+        
+        Argument:
+            - predictions: Tensor with logits of output
+            - targets: Tensor with targets.
+            - predictions_local: List of own model predictions on dome data.
+            - predictions_others: List of others models predictions (on the same data).
+        
+        Returns:
+            - loss: The computed loss.
+        
+        """
+        # Loss on local data
+        loss = self.loss(predictions, targets)
+        
+        if predictions_local and predictions_others:
+            # Initialization
+            loss_kd = 0
+            count = 0
+            for Y_logit, Y_other_logit in zip(predictions_local, predictions_others):
+                
+                # Compute class probabilities
+                Y = F.softmax(Y_logit, dim=1)
+                Y_other = F.softmax(Y_other_logit, dim=1)
+
+                if self.reg_loss_type == "KL":
+                    loss_kd += self.loss_KD(torch.log(Y), Y_other).sum()
+                elif self.reg_loss_type == "MSE":
+                    loss_kd += self.loss_KD(Y_logit, Y_other_logit).sum()
+                count += Y.shape[0]
+
+            # Normalize to make it independant wrt the number of collaborators.
+            loss +=  (self.coeff * loss_kd / count)
+            
+        return  loss
+    
+def dead_leaves(dim, sigma=1, shape_mode='mixed', n_shape_max=100, normalize=True):
+    """Create a dead leaf image (strongly inspired by the code preseted here:
+    https://github.com/mbaradad/learning_with_noise
+    
+    Arguments:
+        - dim: dimenstions of the dataset to generate.
+        - sigma: concentration of the exponential distriution (for shape radius).
+        - shape_mode: Either 'circle', 'square', 'oriented_square','rectangle', 'triangle', 'quadrilater' or 'mixed'.
+        - n_shape_max: Maximum number of shape.
+        - normalize: Boolean, wheather to normalize the images (mu=0, sigma=1)
+    
+    Return:
+        - dataset: Torch tensor of shape (n, *dim) containing the images.
+    """
+    # Initialize image list
+    img_list = []
+    for _ in range(dim[0]):
+        # Initialize image
+        img = np.zeros((dim[2], dim[3], dim[1]), dtype=np.float32)
+
+        # Compute distribution of radiis (exponential distribution with lambda = sigma):
+        rmin = 0.1
+        rmax = 0.5
+        k = 200
+        r_list = np.linspace(rmin, rmax, k)
+        r_dist = 1./(r_list ** sigma)
+        if sigma > 0:
+            # normalize so that the tail is 0 (p(r >= rmax)) = 0
+            r_dist = r_dist - 1/rmax**sigma
+        r_dist = np.cumsum(r_dist)
+
+        # Normalize so that cumsum is 1.
+        r_dist = r_dist/r_dist.max()
+
+        # Create shapes
+        for i in range(n_shape_max):
+
+            # Choose shape
+            available_shapes = ['circle', 'square', 'oriented_square','rectangle', 'triangle', 'quadrilater']
+            assert shape_mode in available_shapes or shape_mode == 'mixed'
+            if shape_mode == 'mixed':
+                shape = random.choice(available_shapes)
+            else:
+                shape = shape_mode
+
+            # Choose color
+            color = tuple([k for k in np.random.uniform(0, 1, dim[1])])
+
+            # Choose radius in pixel (between 1 and r_max * min(width, height)
+            r_p = np.random.uniform(0,1)
+            r_i = np.argmin(np.abs(r_dist - r_p))
+            radius = max(int(r_list[r_i] * min(dim[2], dim[3])), 1)
+
+            # Chose centroid
+            center_x = int(np.random.uniform(0, dim[3]))
+            center_y = int(np.random.uniform(0, dim[2]))
+
+            # Create shape
+            if shape == 'circle':
+                img = cv2.circle(img, (center_x, center_y), radius=radius, color=color, thickness=-1)
+            else:
+                if shape == 'square' or shape == 'oriented_square':
+                    side = radius * np.sqrt(2)
+                    corners = np.array(((- side / 2, - side / 2),
+                                        (+ side / 2, - side / 2),
+                                        (+ side / 2, + side / 2),
+                                        (- side / 2, + side / 2)), dtype='int32')
+                    if shape == 'oriented_square':
+                        theta = np.random.uniform(0, 2 * np.pi)
+                        c, s = np.cos(theta), np.sin(theta)
+                        R = np.array(((c, -s), (s, c)))
+                        corners = (R @ corners.transpose()).transpose()
+                elif shape == 'rectangle':
+                    # sample one points in the firrst quadrant, and get the two other symmetric
+                    a = np.random.uniform(0, 0.5*np.pi, 1)
+                    corners = np.array(((+ radius * np.cos(a), + radius * np.sin(a)),
+                                        (+ radius * np.cos(a), - radius * np.sin(a)),
+                                        (- radius * np.cos(a), - radius * np.sin(a)),
+                                        (- radius * np.cos(a), + radius * np.sin(a))), dtype='int32')[:,:,0]
+
+                else:
+                    # we sample three or 4 points on a circle of the given radius
+                    angles = sorted(np.random.uniform(0, 2*np.pi, 3 if shape == 'triangle' else 4))
+                    corners = []
+                    for a in angles:
+                        corners.append((radius * np.cos(a), radius * np.sin(a)))
+
+                corners = np.array((center_x, center_y)) + np.array(corners)
+                img = cv2.fillPoly(img, np.array(corners, dtype='int32')[None], color=color)
+
+            # Stop if all pixels have been filled
+            if (img.sum(-1) == 0).sum() == 0:
+                break
+    
+        # Rearrange dimensions (channel, height, width)
+        img = np.expand_dims(np.clip(img, 0, 1).transpose((2,0,1)), axis=0)
+        img_list.append(img)
+    
+    dataset = torch.FloatTensor(np.concatenate(img_list, axis=0))
+    
+    if normalize:
+        mu, std = dataset.mean(), dataset.std()
+        dataset.sub_(mu).div_(std)
+        dataset.sub_(mu).div_(std)
+        
+    return dataset
+
+def generate_data(dimensions, generator):
+    """Generate random procedural data.
+    
+    Arguments:
+        - dimensions: Dimension of the data to generate.
+        - generator: Method to generate the random data.
+    
+    Return:
+        - The randomly generated data.
+    """
+    if generator == "uniform":
+        return  torch.rand(dimensions).mul_(2).sub_(1)
+    
+    elif generator == "normal":
+        return torch.normal(0, 1, size=dimensions)
+    
+    elif generator == "dead_leaves":
+        return dead_leaves(dimensions)
