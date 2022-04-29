@@ -1,6 +1,6 @@
 # Custom
-data/
-saves/
+data/*
+saves/*
 archives/
 *.DS_Store
 
