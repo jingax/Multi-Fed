@@ -725,16 +725,16 @@ class FeatureTracker():
         self.class_counts = torch.zeros(self.n_clients, self.meta["n_class"]).to(int)
         for client_id, class_count in enumerate(self.class_counts):
             val, counts = self.train_ds_list[client_id].targets.unique(return_counts=True)
-            self.class_counts[client_id, val] = counts
+            self.class_counts[client_id, val.cpu()] = counts.cpu()
 
         # Initialization
         with torch.no_grad():
             for client_id, (model, tr_ds) in enumerate(zip(self.client_models, self.train_ds_list)):
                 model.eval()
-                features = model.features(tr_ds.inputs)
+                features = model.features(tr_ds.inputs).cpu()
                 average_features = torch.zeros(self.meta["n_class"], self.meta["feat_dim"])
                 for c in range(self.meta["n_class"]):
-                    average_features[c] = features[tr_ds.targets == c].mean(dim=0)
+                    average_features[c] = features[tr_ds.targets.cpu() == c].mean(dim=0)
                 self.buffers[client_id].append(features)
                 self.average_features[client_id].append(average_features)
             
@@ -749,10 +749,10 @@ class FeatureTracker():
         with torch.no_grad():
             for client_id, (model, tr_ds) in enumerate(zip(self.client_models, self.train_ds_list)):
                 model.eval()
-                features = model.features(tr_ds.inputs)
+                features = model.features(tr_ds.inputs).cpu()
                 average_features = torch.zeros(self.meta["n_class"], self.meta["feat_dim"])
                 for c in range(self.meta["n_class"]):
-                    average_features[c] = features[tr_ds.targets == c].mean(dim=0)
+                    average_features[c] = features[tr_ds.targets.cpu() == c].mean(dim=0)
                 self.buffers[client_id].append(features)
                 self.average_features[client_id].append(average_features)
             
@@ -764,3 +764,47 @@ class FeatureTracker():
     def get_global_features(self, r=-1):
         """Return the global aggregated feature at the given round."""
         return self.global_features[r]
+
+    
+    def plot_class_distance(self, class1, class2):
+        """Plot the evolution of the distances between classes"""
+        fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+        
+        distances = [[torch.linalg.norm(feat[class1] - feat[class2]) for feat in self.average_features[i]] for i in range(self.n_clients)]
+        
+        print(len(distances))
+        for i, dist in enumerate(distances):
+            ax.plot(dist, label="Client {}".format(i))
+        
+        ax.legend()
+        
+
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
