@@ -208,6 +208,7 @@ class CustomDataset(torch.utils.data.Dataset):
     
     def __getitem__(self, index):
         return self.inputs[index], self.targets[index]
+
     
 def split_dataset_randomly(dataset, sizes):
     """Split a dataset into subsets of a given relative size.
@@ -651,9 +652,12 @@ def plot_global_training_history(perf_trackers, metric, title=None, logscale=Fal
     ax.grid(True, which="both")
     ax.set_ylabel(metric)
     
-    # Set y-axis to logscale
+    # Parameters
     if logscale:
         ax.set_yscale('log')
+    
+    if metric == "accuracy":
+        ax.set_ylim(0, 1)
     
     if title is not None:
         ax.set_title(title)
@@ -770,29 +774,23 @@ class FeatureTracker():
         """Plot the evolution of the distances between classes"""
         fig, ax = plt.subplots(1, 1, figsize=(8, 8))
         
-        distances = [[torch.linalg.norm(feat[class1] - feat[class2]) for feat in self.average_features[i]] for i in range(self.n_clients)]
+        distances = [[F.cosine_similarity(feat[class1], feat[class2], dim=0) for feat in self.average_features[i]] for i in range(self.n_clients)]
         
-        print(len(distances))
         for i, dist in enumerate(distances):
             ax.plot(dist, label="Client {}".format(i))
         
         ax.legend()
         
+    def plot_variance_heatmap(self, r=-1):
+        fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+        std = np.zeros((self.meta["n_class"], self.meta["n_class"]))  
+        for c1 in range(self.meta["n_class"]):
+            for c2 in range(self.meta["n_class"]):
+                dist = [F.cosine_similarity(self.average_features[i][r][c1], self.average_features[i][r][c2], dim=0) for i in range(self.n_clients)]
+                std[c1, c2] = np.array(dist).std()
+        #ax.imshow(std, cmap='YlGnBu', interpolation='nearest')
+        sns.heatmap(std, cmap="Blues", annot=True, ax=ax, cbar=False, annot_kws={"fontsize":"small"})
 
-    
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     
     
     

@@ -98,9 +98,9 @@ class LeNet5(nn.Module):
                                       nn.ReLU(),
                                       nn.AdaptiveAvgPool2d(output_size=(1, 1)),
                                       nn.Flatten(start_dim=1),
-                                      nn.Linear(120, 84),
+                                      nn.Linear(120, 60),
                                       nn.Tanh())
-        self.classifier = nn.Linear(84, output_shape)
+        self.classifier = nn.Linear(60, output_shape)
 
 
     def forward(self, x):
@@ -153,7 +153,7 @@ class ResNet9(nn.Module):
     """
     Residual network with 9 layers.
     """
-    def __init__(self, in_channels, output_shape):
+    def __init__(self, in_channels, output_shape, dropout_rate=0.25):
         super(ResNet9, self).__init__()
 
         self.features = nn.Sequential(
@@ -176,9 +176,12 @@ class ResNet9(nn.Module):
             ResBlock(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.AdaptiveAvgPool2d(output_size=(1, 1)),
-            nn.Flatten(start_dim=1))
+            nn.Flatten(start_dim=1),
+            nn.Linear(in_features=256, out_features=100),
+            nn.Dropout(dropout_rate),
+            nn.Tanh())
                                       
-        self.classifier = nn.Linear(in_features=256, out_features=output_shape, bias=True)
+        self.classifier = nn.Linear(in_features=100, out_features=output_shape, bias=True)
         
 
     def forward(self, x):
