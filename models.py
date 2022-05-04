@@ -15,7 +15,7 @@ def get_model(task):
     """Build a model specific for the given task.
     
     Arguments:
-        - task: The specific task.
+        - task: The specific task (dataset).
         
     Return:
         - The corresponding neural network
@@ -25,20 +25,20 @@ def get_model(task):
         return LeNet5(in_channels=1, output_shape=10, dropout_rate=0.25)
     
     if task == "CIFAR10":
-        return ResNet18(in_channels=3, output_shape=10)
+        return ResNet9(in_channels=3, output_shape=10)
     
     if task == "CIFAR100":
-        return ResNet18(in_channels=3, output_shape=100)
+        return ResNet9(in_channels=3, output_shape=100)
     
     
 class FC_Net(nn.Module):
     """Simple fully connected nueral network.""" 
 
-    def __init__(self, input_shape, hidden_layers, n_class, dropout_rate=0.25):
+    def __init__(self, input_shape, hidden_layers, output_shape, dropout_rate=0.25):
         super().__init__()
         
         if len(hidden_layers) == 0:
-            self.model = nn.Linear(input_shape, n_class)
+            self.model = nn.Linear(input_shape, output_shape)
         else:
             layer_list = [nn.Linear(input_shape, hidden_layers[0]),
                           nn.ReLU(),
@@ -48,7 +48,7 @@ class FC_Net(nn.Module):
                 layer_list.append(nn.ReLU())    
                 layer_list.append(nn.Dropout(dropout_rate))    
             
-            layer_list.append(nn.Linear(hidden_layers[-1], n_class))
+            layer_list.append(nn.Linear(hidden_layers[-1], output_shape))
             self.model = nn.Sequential(*layer_list)
 
     def forward(self, x):
@@ -70,8 +70,7 @@ def ResNet18(in_channels, output_shape, pretrained=False):
     # Load ResNet18
     model = torchvision.models.resnet18(pretrained=pretrained)
     # Adapt input layer
-    model.conv1 = nn.Conv2d(in_channels, 64, kernel_size=(7, 7), 
-                            stride=(2, 2), padding=(3, 3), bias=False)
+    model.conv1 = nn.Conv2d(in_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
     # Adapt output layer
     model.fc = nn.Linear(in_features=512, out_features=output_shape, bias=True)
     
@@ -86,43 +85,103 @@ class LeNet5(nn.Module):
             -output_shape: Number of class (for the output dimention)
             -dropout_rate: Percentage of neurons to drop.
         """
-        super().__init__()        
-        self.conv1 = nn.Conv2d(in_channels = in_channels, out_channels = 6, 
-                               kernel_size = 5, stride = 1, padding = 2)
-        self.conv2 = nn.Conv2d(in_channels = 6, out_channels = 16, 
-                               kernel_size = 5, stride = 1, padding = 2)
-        self.conv3 = nn.Conv2d(in_channels = 16, out_channels = 120, 
-                               kernel_size = 3, stride = 1, padding = 1)
-        self.avgpool2 = nn.AdaptiveAvgPool2d(output_size=(1, 1))
-        self.linear1 = nn.Linear(120, 84)
-        self.linear2 = nn.Linear(84, output_shape)
-        
-        self.activation = nn.ReLU()
-        self.avgpool = nn.AvgPool2d(kernel_size = 2, stride = 2)
-        self.dropout2d = nn.Dropout2d(dropout_rate)
-        self.dropout = nn.Dropout(dropout_rate)
+        super(LeNet5, self).__init__()
+        self.features = nn.Sequential(nn.Conv2d(in_channels = in_channels, out_channels=6, kernel_size=5, stride=1, padding=2),
+                                      nn.ReLU(),
+                                      nn.AvgPool2d(kernel_size=2, stride=2),
+                                      nn.Dropout2d(dropout_rate),
+                                      nn.Conv2d(in_channels=6, out_channels=16, kernel_size=5, stride=1, padding=2),
+                                      nn.ReLU(),
+                                      nn.AvgPool2d(kernel_size=2, stride=2),
+                                      nn.Dropout2d(dropout_rate),
+                                      nn.Conv2d(in_channels=16, out_channels=120, kernel_size=3, stride=1, padding=1),
+                                      nn.ReLU(),
+                                      nn.AdaptiveAvgPool2d(output_size=(1, 1)),
+                                      nn.Flatten(start_dim=1),
+                                      nn.Linear(120, 84),
+                                      nn.Tanh())
+        self.classifier = nn.Linear(84, output_shape)
 
-    def forward(self, x, return_hl=False):
-        x = self.conv1(x)
-        x = self.activation(x)
-        x = self.avgpool(x)
-        x = self.dropout2d(x)
-        x = self.conv2(x)
-        x = self.activation(x)
-        x = self.avgpool(x)
-        x = self.dropout2d(x)
-        x = self.conv3(x)
-        x = self.activation(x)
-        x = self.avgpool2(x)
-        x = x.reshape(x.shape[0], -1)
-        x_hl = self.linear1(x)
-        x = self.activation(x_hl)
-        x = self.dropout(x)
-        x = self.linear2(x)
-        
-        if return_hl:
-            return x, x_hl
-        else:
-            return x
+
+    def forward(self, x):
+        x = self.features(x)
+        x = self.classifier(x)
+        return x
     
 
+
+class ResBlock(nn.Module):
+    """
+    A residual block (He et al. 2016)
+    Inspired by https://github.com/matthias-wright/cifar10-resnet/blob/master/model.py
+    """
+
+    def __init__(self, in_channels, out_channels, kernel_size, padding, stride):
+        super(ResBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, padding=padding, stride=stride, bias=False)
+        self.bn1 = nn.BatchNorm2d(num_features=out_channels)
+        self.conv2 = nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=kernel_size, padding=padding, bias=False)
+        self.bn2 = nn.BatchNorm2d(num_features=out_channels)
+
+        if stride != 1:
+            # Downsample residual in case stride > 1
+            self.downsample = nn.Sequential(
+                nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(num_features=out_channels)
+            )
+        else:
+            self.downsample = None
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        res = x
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.conv2(x)
+        x = self.bn2(x)
+
+        if self.downsample is not None:
+            res = self.downsample(res)
+
+        x = self.relu(x)
+        x = x + res
+        return x
+
+
+class ResNet9(nn.Module):
+    """
+    Residual network with 9 layers.
+    """
+    def __init__(self, in_channels, output_shape):
+        super(ResNet9, self).__init__()
+
+        self.features = nn.Sequential(
+            nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(num_features=64),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(num_features=128),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            ResBlock(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(num_features=256),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(num_features=256),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            ResBlock(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.AdaptiveAvgPool2d(output_size=(1, 1)),
+            nn.Flatten(start_dim=1))
+                                      
+        self.classifier = nn.Linear(in_features=256, out_features=output_shape, bias=True)
+        
+
+    def forward(self, x):
+        x = self.features(x)
+        x = self.classifier(x)
+        return x

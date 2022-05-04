@@ -47,9 +47,9 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False
         - device: Device where to ship the data.
         
     Returns:
-        - train_input: A tensor with the train features.
+        - train_input: A tensor with the train inputs.
         - train_target: A tensor with the train targets.
-        - test_input: A tensor with the test features.
+        - test_input: A tensor with the test inputs.
         - test_target: A tensor with the test targets.
         - meta: A dictionry with useful metadata on the dataset.
     """
@@ -191,23 +191,23 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False
 
 class CustomDataset(torch.utils.data.Dataset):
     """Custom dataset wrapper."""
-    def __init__(self, features, targets):
+    def __init__(self, inputs, targets):
         """Constructor.
         
         Arguments:
-            - features: A tensor contaiing the features aligned in the 0th dimension.
+            - inputs: A tensor contaiing the inputs aligned in the 0th dimension.
             - targets: A tensor contaiing the targets aligned in the 0th dimension.
         """
         super(CustomDataset, self).__init__()
-        self.features = features
+        self.inputs = inputs
         self.targets = targets
-        self.len = features.shape[0]
+        self.len = inputs.shape[0]
     
     def __len__(self):
         return self.len
     
     def __getitem__(self, index):
-        return self.features[index], self.targets[index]
+        return self.inputs[index], self.targets[index]
     
 def split_dataset_randomly(dataset, sizes):
     """Split a dataset into subsets of a given relative size.
@@ -367,11 +367,11 @@ def split_dataset(n_clients, train_ds, val_ds, alpha, sizes=None):
 
         for client_id in range(n_clients):
             if train_dist[client_id, c] > 0:
-                train_x_list[client_id].append(train_ds.features[index_class_tr[:train_dist[client_id, c]]])
+                train_x_list[client_id].append(train_ds.inputs[index_class_tr[:train_dist[client_id, c]]])
                 train_y_list[client_id].append(train_ds.targets[index_class_tr[:train_dist[client_id, c]]])
                 index_class_tr = index_class_tr[train_dist[client_id, c]:]
             if val_dist[client_id, c] > 0:
-                val_x_list[client_id].append(val_ds.features[index_class_val[:val_dist[client_id, c]]])
+                val_x_list[client_id].append(val_ds.inputs[index_class_val[:val_dist[client_id, c]]])
                 val_y_list[client_id].append(val_ds.targets[index_class_val[:val_dist[client_id, c]]])
                 index_class_val = index_class_val[val_dist[client_id, c]:]
 
@@ -613,7 +613,7 @@ def infer(model, data_loader, form="numpy", normalize=False, classify=False):
     # Inference
     model.eval()
     with torch.no_grad():
-        predictions = model(data_loader.dataset.features).cpu()
+        predictions = model(data_loader.dataset.inputs).cpu()
         targets = data_loader.dataset.targets.squeeze().cpu()
     model.train()
     if normalize:
@@ -637,7 +637,7 @@ def plot_global_training_history(perf_trackers, metric, title=None, logscale=Fal
         - logscale: Bollean, wheather to set y-axis to log scale.
         - savepath: The savepath (with filename) where to store the figure. Not stored if None is given.
     """
-    fig, ax = plt.subplots(1, 1, figsize=(6, 4))
+    fig, ax = plt.subplots(1, 1, figsize=(8, 8))
     ax.set_title("Training History")
     
     for pt in perf_trackers:
@@ -647,7 +647,7 @@ def plot_global_training_history(perf_trackers, metric, title=None, logscale=Fal
         for key, perf_dict in pt.perf_histories.items():
             ax.plot(pt.index, perf_dict[metric], label="{} ({})".format(pt.ID, key))
     
-    ax.legend(loc="best")
+    ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
     ax.grid(True, which="both")
     ax.set_ylabel(metric)
     
@@ -687,196 +687,80 @@ def distance_correlation(X, Y):
     dCorr = dCov / np.sqrt(dVarX * dVarY)
 
     return dCorr
-    
-class KDLoss(nn.Module):
-    """Custom loss function for federated knowledge KD."""
-    
-    def __init__(self, main_loss="cross-entropy", reg_loss="KL", coeff=1):
-        """Class constructor.
-        
-        Arguments:
-            - main_loss: Main loss (either 'cross-entropy' or 'MSE').
-            - reg_loss: Secondary loss (either 'KL' or 'MSE').
-            - coeff: Lambda coefficient in the loss.
-        Returns:
-            - self: The class instance
-        """
-        super(KDLoss, self).__init__()
-        
-        # Main loss
-        if main_loss == "cross-entropy":
-            self.loss = nn.CrossEntropyLoss()
-        elif main_loss == "MSE":
-            self.loss = nn.MSELoss()
-        else:
-            raise ValueError("Given loss is not valid.")
-        
-        # KD Loss
-        if reg_loss == "KL":
-            self.loss_KD = nn.KLDivLoss()
-        elif reg_loss == "MSE":
-            self.loss_KD = nn.MSELoss()
-        
-        # Members
-        self.main_loss_type = main_loss
-        self.reg_loss_type = reg_loss
-        self.coeff = coeff        
  
-    def forward(self, predictions, targets, Y_logit, Y_other_logit):
-        """Forward pass. 
+
+    
+def initialize_centroids(feat_dim, n_class):
+    """Initialize the featrue centroids for each class."""
+    return torch.rand((n_class, feat_dim)).mul_(2).sub_(1).float()
+    
+
+class DiscLoss(nn.Module):
+    """Discriminator contrastive loss."""
+    def __init__(self):
+        super(DiscLoss, self).__init__()
+        self.criterion = nn.BCELoss()
+    
+    def forward(self, prob, prob_global, labels, labels_global):
+        scores = prob.unsqueeze(1) * prob_global.unsqueeze(0)
+        scores = scores.sum(dim=2).view(prob.shape[0] * prob_global.shape[0]).float()
+        targets = (labels.unsqueeze(1) == (labels_global.unsqueeze(0))).view(labels.shape[0] * labels_global.shape[0]).float()
+        return self.criterion(scores, targets)
+
+class FeatureTracker():
+    """Track the feature of each clients for learning/analysis/visualization."""
+    def __init__(self, client_models, train_ds_list, meta):
+        # Models and datasets
+        self.client_models = client_models
+        self.train_ds_list = train_ds_list
+        self.n_clients = len(client_models)
+        self.meta = meta
         
-        Argument:
-            - predictions: Tensor with logits of output
-            - targets: Tensor with targets.
-            - predictions_local: List of own model predictions on dome data.
-            - predictions_others: List of others models predictions (on the same data).
+        # Buffers to store features at each round
+        self.buffers = [[] for _ in range(self.n_clients)]
+        self.average_features = [[] for _ in range(self.n_clients)]
+        self.global_features = []
         
-        Returns:
-            - loss: The computed loss.
-        
-        """
-        # Loss on local data
-        loss = self.loss(predictions, targets)
-                    
+        # Class counts
+        self.class_counts = torch.zeros(self.n_clients, self.meta["n_class"]).to(int)
+        for client_id, class_count in enumerate(self.class_counts):
+            val, counts = self.train_ds_list[client_id].targets.unique(return_counts=True)
+            self.class_counts[client_id, val] = counts
+
         # Initialization
-        loss_kd = 0
-
-        # Compute class probabilities
-        Y = F.softmax(Y_logit, dim=1)
-        Y_other = F.softmax(Y_other_logit, dim=1)
-
-        if self.reg_loss_type == "KL":
-            loss_kd += self.loss_KD(torch.log(Y), Y_other)
-        elif self.reg_loss_type == "MSE":
-            loss_kd += self.loss_KD(Y_logit, Y_other_logit)
-
-        # Normalize to make it independant wrt the number of collaborators.
-        loss += self.coeff * loss_kd 
+        with torch.no_grad():
+            for client_id, (model, tr_ds) in enumerate(zip(self.client_models, self.train_ds_list)):
+                model.eval()
+                features = model.features(tr_ds.inputs)
+                average_features = torch.zeros(self.meta["n_class"], self.meta["feat_dim"])
+                for c in range(self.meta["n_class"]):
+                    average_features[c] = features[tr_ds.targets == c].mean(dim=0)
+                self.buffers[client_id].append(features)
+                self.average_features[client_id].append(average_features)
             
-        return  loss
-    
-def dead_leaves(dim, sigma=1, shape_mode='mixed', n_shape_max=100, normalize=True):
-    """Create a dead leaf image (strongly inspired by the code preseted here:
-    https://github.com/mbaradad/learning_with_noise
-    
-    Arguments:
-        - dim: dimenstions of the dataset to generate.
-        - sigma: concentration of the exponential distriution (for shape radius).
-        - shape_mode: Either 'circle', 'square', 'oriented_square','rectangle', 'triangle', 'quadrilater' or 'mixed'.
-        - n_shape_max: Maximum number of shape.
-        - normalize: Boolean, wheather to normalize the images (mu=0, sigma=1)
-    
-    Return:
-        - dataset: Torch tensor of shape (n, *dim) containing the images.
-    """
-    # Initialize image list
-    img_list = []
-    for _ in range(dim[0]):
-        # Initialize image
-        img = np.zeros((dim[2], dim[3], dim[1]), dtype=np.float32)
-
-        # Compute distribution of radiis (exponential distribution with lambda = sigma):
-        rmin = 0.1
-        rmax = 0.5
-        k = 200
-        r_list = np.linspace(rmin, rmax, k)
-        r_dist = 1./(r_list ** sigma)
-        if sigma > 0:
-            # normalize so that the tail is 0 (p(r >= rmax)) = 0
-            r_dist = r_dist - 1/rmax**sigma
-        r_dist = np.cumsum(r_dist)
-
-        # Normalize so that cumsum is 1.
-        r_dist = r_dist/r_dist.max()
-
-        # Create shapes
-        for i in range(n_shape_max):
-
-            # Choose shape
-            available_shapes = ['circle', 'square', 'oriented_square','rectangle', 'triangle', 'quadrilater']
-            assert shape_mode in available_shapes or shape_mode == 'mixed'
-            if shape_mode == 'mixed':
-                shape = random.choice(available_shapes)
-            else:
-                shape = shape_mode
-
-            # Choose color
-            color = tuple([k for k in np.random.uniform(0, 1, dim[1])])
-
-            # Choose radius in pixel (between 1 and r_max * min(width, height)
-            r_p = np.random.uniform(0,1)
-            r_i = np.argmin(np.abs(r_dist - r_p))
-            radius = max(int(r_list[r_i] * min(dim[2], dim[3])), 1)
-
-            # Chose centroid
-            center_x = int(np.random.uniform(0, dim[3]))
-            center_y = int(np.random.uniform(0, dim[2]))
-
-            # Create shape
-            if shape == 'circle':
-                img = cv2.circle(img, (center_x, center_y), radius=radius, color=color, thickness=-1)
-            else:
-                if shape == 'square' or shape == 'oriented_square':
-                    side = radius * np.sqrt(2)
-                    corners = np.array(((- side / 2, - side / 2),
-                                        (+ side / 2, - side / 2),
-                                        (+ side / 2, + side / 2),
-                                        (- side / 2, + side / 2)), dtype='int32')
-                    if shape == 'oriented_square':
-                        theta = np.random.uniform(0, 2 * np.pi)
-                        c, s = np.cos(theta), np.sin(theta)
-                        R = np.array(((c, -s), (s, c)))
-                        corners = (R @ corners.transpose()).transpose()
-                elif shape == 'rectangle':
-                    # sample one points in the firrst quadrant, and get the two other symmetric
-                    a = np.random.uniform(0, 0.5*np.pi, 1)
-                    corners = np.array(((+ radius * np.cos(a), + radius * np.sin(a)),
-                                        (+ radius * np.cos(a), - radius * np.sin(a)),
-                                        (- radius * np.cos(a), - radius * np.sin(a)),
-                                        (- radius * np.cos(a), + radius * np.sin(a))), dtype='int32')[:,:,0]
-
-                else:
-                    # we sample three or 4 points on a circle of the given radius
-                    angles = sorted(np.random.uniform(0, 2*np.pi, 3 if shape == 'triangle' else 4))
-                    corners = []
-                    for a in angles:
-                        corners.append((radius * np.cos(a), radius * np.sin(a)))
-
-                corners = np.array((center_x, center_y)) + np.array(corners)
-                img = cv2.fillPoly(img, np.array(corners, dtype='int32')[None], color=color)
-
-            # Stop if all pixels have been filled
-            if (img.sum(-1) == 0).sum() == 0:
-                break
-    
-        # Rearrange dimensions (channel, height, width)
-        img = np.expand_dims(np.clip(img, 0, 1).transpose((2,0,1)), axis=0)
-        img_list.append(img)
-    
-    dataset = torch.FloatTensor(np.concatenate(img_list, axis=0))
-    
-    if normalize:
-        mu, std = dataset.mean(), dataset.std()
-        dataset.sub_(mu).div_(std)
-        dataset.sub_(mu).div_(std)
+            # Compute global averaged
+            global_features = torch.stack([self.average_features[i][0] * self.class_counts[i].unsqueeze(1) 
+                                           for i in range(self.n_clients)], dim=0).sum(dim=0).div(self.class_counts.sum(dim=0).unsqueeze(1))
+            self.global_features.append(global_features)
         
-    return dataset
-
-def generate_data(dimensions, generator):
-    """Generate random procedural data.
+    def new_round(self):
+        """Compute the features for each data sample and aggregates the results for the next rounds."""
+        # Compute features and averegage
+        with torch.no_grad():
+            for client_id, (model, tr_ds) in enumerate(zip(self.client_models, self.train_ds_list)):
+                model.eval()
+                features = model.features(tr_ds.inputs)
+                average_features = torch.zeros(self.meta["n_class"], self.meta["feat_dim"])
+                for c in range(self.meta["n_class"]):
+                    average_features[c] = features[tr_ds.targets == c].mean(dim=0)
+                self.buffers[client_id].append(features)
+                self.average_features[client_id].append(average_features)
+            
+            # Compute global averaged
+            global_features = torch.stack([self.average_features[i][0] * self.class_counts[i].unsqueeze(1) 
+                                           for i in range(self.n_clients)], dim=0).sum(dim=0).div(self.class_counts.sum(dim=0).unsqueeze(1))
+            self.global_features.append(global_features)
     
-    Arguments:
-        - dimensions: Dimension of the data to generate.
-        - generator: Method to generate the random data.
-    
-    Return:
-        - The randomly generated data.
-    """
-    if generator == "uniform":
-        return  torch.rand(dimensions).mul_(2).sub_(1)
-    
-    elif generator == "normal":
-        return torch.normal(0, 1, size=dimensions)
-    
-    elif generator == "dead_leaves":
-        return dead_leaves(dimensions)
+    def get_global_features(self, r=-1):
+        """Return the global aggregated feature at the given round."""
+        return self.global_features[r]
