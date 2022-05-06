@@ -19,6 +19,7 @@ import scipy
 import cv2
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics.pairwise import euclidean_distances
+from sklearn.manifold import TSNE
 
 # AI
 import torch
@@ -662,12 +663,13 @@ class PerfTracker():
             fig.savefig(savepath, bbox_inches='tight')
     
     
-def plot_global_training_history(perf_trackers, metric, title=None, logscale=False, savepath=None):
+def plot_global_training_history(perf_trackers, metric, which=None, title=None, logscale=False, savepath=None):
     """Plot the training history of multiple performance trackers.
     
     Arguments:
         - perf_trackers: A list of PerfTracker objects.
         - metric: The metric to plot.
+        - which: Data to evaluate (list or all if None)
         - logscale: Bollean, wheather to set y-axis to log scale.
         - savepath: The savepath (with filename) where to store the figure. Not stored if None is given.
     """
@@ -679,7 +681,8 @@ def plot_global_training_history(perf_trackers, metric, title=None, logscale=Fal
             raise NotImplementedError
     
         for key, perf_dict in pt.perf_histories.items():
-            ax.plot(pt.index, perf_dict[metric], label="{} ({})".format(pt.ID, key))
+            if which is None or key in which:
+                ax.plot(pt.index, perf_dict[metric], label="{} ({})".format(pt.ID, key))
     
     ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
     ax.grid(True, which="both")
@@ -748,11 +751,11 @@ class FeatureTracker():
         self.global_features = []
         
         # Class counts
-        self.class_counts = torch.zeros(self.n_clients, self.meta["n_class"]).to(int)
+        self.class_counts = torch.zeros(self.n_clients, self.meta["n_class"]).long()
         for client_id, class_count in enumerate(self.class_counts):
             val, counts = self.dl_list[client_id].dataset.targets.unique(return_counts=True)
             self.class_counts[client_id, val.cpu()] = counts.cpu()
-
+        
         # Initialization
         self.new_round()
         
@@ -763,14 +766,17 @@ class FeatureTracker():
             features, targets = infer(model.features, dl, form="torch")
             average_features = torch.zeros(self.meta["n_class"], self.feature_dim)
             for c in range(self.meta["n_class"]):
-                average_features[c] = features[targets == c].mean(dim=0)
+                if torch.any(targets == c).item():
+                    average_features[c] = features[targets == c].mean(dim=0)
+            
             # Buffering
             self.buffers[client_id].append(features)
             self.average_features[client_id].append(average_features)
-
+        
         # Compute global averaged
-        global_features = torch.stack([self.average_features[i][0] * self.class_counts[i].unsqueeze(1) 
+        global_features = torch.stack([self.average_features[i][-1] * self.class_counts[i].unsqueeze(1) 
                                        for i in range(self.n_clients)], dim=0)
+        
         global_features = global_features.sum(dim=0).div(self.class_counts.sum(dim=0).unsqueeze(1))
         self.global_features.append(global_features)
     
@@ -793,6 +799,7 @@ class FeatureTracker():
         ax.set_title("Distanc between {} and {}". format(self.meta["class_names"][class1], self.meta["class_names"][class2]))
         
     def plot_variance_heatmap(self, r=-1):
+        """WIP"""
         fig, ax = plt.subplots(1, 1, figsize=(8, 8))
         std = np.zeros((self.meta["n_class"], self.meta["n_class"]))  
         for c1 in range(self.meta["n_class"]):
@@ -800,6 +807,15 @@ class FeatureTracker():
                 dist = [F.cosine_similarity(self.average_features[i][r][c1], self.average_features[i][r][c2], dim=0) for i in range(self.n_clients)]
                 std[c1, c2] = np.array(dist).std()
         sns.heatmap(std, cmap="Blues", annot=False, ax=ax, cbar=False, annot_kws={"fontsize":"small"}, vmin=0.0, vmax=0.2)
+    
+    def plot_tSNE(self):
+        """Plot the t-SNE dimension reduction of the averaged feature."""
+        embedder = TSNE(n_components=2, init='random', perplexity=30)
+        
+        data = torch.cat([self.average_features[i][-1][self.average_features[i][-1].all(dim=1)] for i in range(self.n_clients)])
+        users = torch.cat([i * torch.ones(self.meta["n_class"])[self.average_features[i][-1].all(dim=1)] for i in range(self.n_clients)])
+        feat_emb = embedder.fit_transform(data.numpy())
+        plt.scatter(feat_emb[:,0], feat_emb[:,1], c=users, s=10, cmap="tab10")
 
 def model_size(model):
     """Compute the memory size (MB) of the given model (parameters + buffers)."""

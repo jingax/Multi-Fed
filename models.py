@@ -24,7 +24,7 @@ def get_model(model, feat_dim, meta):
     """
     
     if model == "LeNet5":
-        return LeNet5(in_channels=meta["in_dimension"][0], feat_dim=feat_dim, output_shape=meta["n_class"], dropout_rate=0.25)
+        return LeNet5(in_channels=meta["in_dimension"][0], feat_dim=feat_dim, output_shape=meta["n_class"])
     if model == "ResNet9":
         return ResNet9(in_channels=meta["in_dimension"][0], feat_dim=feat_dim, output_shape=meta["n_class"])
     
@@ -108,7 +108,7 @@ class LeNet5(nn.Module):
                                       nn.AdaptiveAvgPool2d(output_size=(1, 1)),
                                       nn.Flatten(start_dim=1),
                                       nn.Linear(120, feat_dim),
-                                      L2Norm(),
+                                      nn.Tanh(),
                                       nn.Dropout(0.25))
         self.classifier = nn.Linear(feat_dim, output_shape)
 
@@ -192,9 +192,8 @@ class ResNet9(nn.Module):
             nn.AdaptiveAvgPool2d(output_size=(1, 1)),
             nn.Flatten(start_dim=1),
             nn.Linear(in_features=256, out_features=feat_dim),
-            L2Norm(),
-            nn.Dropout(0.25)
-            )
+            nn.ELU(),
+            nn.Dropout(0.25))
                                       
         self.classifier = nn.Linear(in_features=feat_dim, out_features=output_shape, bias=True)
         
@@ -208,21 +207,34 @@ class Discriminator(nn.Module):
     """
     Discriminator for the contrastive loss.
     """
-    def __init__(self, method, classifier=None):
+    def __init__(self, method, classifier=None, temperature=1):
         super(Discriminator, self).__init__()
         self.method = method
+        self.classifier = classifier
+        self.T = temperature
+        if method in ["prob_product", "exponential_prob"] and classifier is None:
+            raise ValueError("A classifier is required for the method '{}'.".format(method))
         
     def forward(self, features, features_global, labels, labels_global):
         if self.method == "distance":
+            # Euclidian distance
             diff = features.unsqueeze(1) - features_global.unsqueeze(0)
             diff = diff.reshape(diff.shape[0] * diff.shape[1], diff.shape[2])
             scores = torch.linalg.norm(diff, dim=1)
             raise NotImplementedError # Not normalized yet
         elif self.method == "cosine_similarity":
+            # Cosine similarity with sigmoid
             scores = F.cosine_similarity(features.unsqueeze(1), features_global.unsqueeze(0), dim=2).flatten()
-            scores = torch.sigmoid(scores)
-        elif self.method == "classfier_difference":
-            targets_global
+            scores = scores / 2 + 0.5 # Bring it to the range [0,1]
+        elif self.method == "prob_product":
+            # Scalar product between estimated probabilities
+            prob =  F.softmax(self.classifier(features)/self.T, dim=1)
+            prob_global =  F.softmax(self.classifier(features_global)/self.T, dim=1)
+            scores = (prob.unsqueeze(1) * prob_global.unsqueeze(0)).sum(-1).flatten()
+        elif self.method == "exponential_prob":
+            # Scalar product between estimated probabilities with exponential form
+            raise NotImplementedError
+        
         targets = (labels.unsqueeze(1) == (labels_global.unsqueeze(0))).reshape(labels.shape[0] * labels_global.shape[0]).float()
         return scores, targets
 
