@@ -11,30 +11,39 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 
-def get_model(task):
+def get_model(model, feat_dim, meta):
     """Build a model specific for the given task.
     
     Arguments:
-        - task: The specific task (dataset).
+        - model: The model architecture.
+        - feat_dim: Feature (last hidden layer) dimension.
+        - meta: Meta data about the task.
         
     Return:
         - The corresponding neural network
     """
     
-    if task in ["MNIST", "FMNIST"]:
-        return LeNet5(in_channels=1, output_shape=10, dropout_rate=0.25)
+    if model == "LeNet5":
+        return LeNet5(in_channels=meta["in_dimension"][0], feat_dim=feat_dim, output_shape=meta["n_class"], dropout_rate=0.25)
+    if model == "ResNet9":
+        return ResNet9(in_channels=meta["in_dimension"][0], feat_dim=feat_dim, output_shape=meta["n_class"])
     
-    if task == "CIFAR10":
-        return ResNet9(in_channels=3, output_shape=10)
-    
-    if task == "CIFAR100":
-        return ResNet9(in_channels=3, output_shape=100)
-    
+
+class L2Norm(nn.Module):
+    """
+    L2 normalization along the last dimension of the tensor
+    """
+    def __init__(self, order=2):
+        super(L2Norm, self).__init__()
+        self.order = order
+        
+    def forward(self, x):
+        return F.normalize(x, dim=-1, p=self.order)
     
 class FC_Net(nn.Module):
     """Simple fully connected nueral network.""" 
 
-    def __init__(self, input_shape, hidden_layers, output_shape, dropout_rate=0.25):
+    def __init__(self, input_shape, hidden_layers, output_shape):
         super().__init__()
         
         if len(hidden_layers) == 0:
@@ -42,11 +51,11 @@ class FC_Net(nn.Module):
         else:
             layer_list = [nn.Linear(input_shape, hidden_layers[0]),
                           nn.ReLU(),
-                          nn.Dropout(dropout_rate)]
+                          nn.Dropout(0.25)]
             for in_sz, out_sz in zip(hidden_layers[:-1], hidden_layers[1:]):
                 layer_list.append(nn.Linear(in_sz, out_sz))   
                 layer_list.append(nn.ReLU())    
-                layer_list.append(nn.Dropout(dropout_rate))    
+                layer_list.append(nn.Dropout(0.25))    
             
             layer_list.append(nn.Linear(hidden_layers[-1], output_shape))
             self.model = nn.Sequential(*layer_list)
@@ -77,7 +86,7 @@ def ResNet18(in_channels, output_shape, pretrained=False):
     return model
 
 class LeNet5(nn.Module):
-    def __init__(self, in_channels, output_shape, dropout_rate=0.25):
+    def __init__(self, in_channels, feat_dim, output_shape):
         """Create a personalized model base on the LeNet5 model archtecture.
     
         Arguments:
@@ -89,18 +98,19 @@ class LeNet5(nn.Module):
         self.features = nn.Sequential(nn.Conv2d(in_channels = in_channels, out_channels=6, kernel_size=5, stride=1, padding=2),
                                       nn.ReLU(),
                                       nn.AvgPool2d(kernel_size=2, stride=2),
-                                      nn.Dropout2d(dropout_rate),
+                                      nn.Dropout2d(0.25),
                                       nn.Conv2d(in_channels=6, out_channels=16, kernel_size=5, stride=1, padding=2),
                                       nn.ReLU(),
                                       nn.AvgPool2d(kernel_size=2, stride=2),
-                                      nn.Dropout2d(dropout_rate),
+                                      nn.Dropout2d(0.25),
                                       nn.Conv2d(in_channels=16, out_channels=120, kernel_size=3, stride=1, padding=1),
                                       nn.ReLU(),
                                       nn.AdaptiveAvgPool2d(output_size=(1, 1)),
                                       nn.Flatten(start_dim=1),
-                                      nn.Linear(120, 60),
-                                      nn.Tanh())
-        self.classifier = nn.Linear(60, output_shape)
+                                      nn.Linear(120, feat_dim),
+                                      L2Norm(),
+                                      nn.Dropout(0.25))
+        self.classifier = nn.Linear(feat_dim, output_shape)
 
 
     def forward(self, x):
@@ -153,7 +163,7 @@ class ResNet9(nn.Module):
     """
     Residual network with 9 layers.
     """
-    def __init__(self, in_channels, output_shape, dropout_rate=0.25):
+    def __init__(self, in_channels, feat_dim, output_shape):
         super(ResNet9, self).__init__()
 
         self.features = nn.Sequential(
@@ -177,14 +187,77 @@ class ResNet9(nn.Module):
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.AdaptiveAvgPool2d(output_size=(1, 1)),
             nn.Flatten(start_dim=1),
-            nn.Linear(in_features=256, out_features=100),
-            nn.Dropout(dropout_rate),
-            nn.Tanh())
+            nn.Linear(in_features=256, out_features=feat_dim),
+            L2Norm(),
+            nn.Dropout(0.25)
+            )
                                       
-        self.classifier = nn.Linear(in_features=100, out_features=output_shape, bias=True)
+        self.classifier = nn.Linear(in_features=feat_dim, out_features=output_shape, bias=True)
         
 
     def forward(self, x):
         x = self.features(x)
         x = self.classifier(x)
         return x
+
+class Discriminator(nn.Module):
+    """
+    Discriminator for the contrastive loss.
+    """
+    def __init__(self, method, classifier=None):
+        super(Discriminator, self).__init__()
+        self.method = method
+        
+    def forward(self, features, features_global, labels, labels_global):
+        if self.method == "distance":
+            diff = features.unsqueeze(1) - features_global.unsqueeze(0)
+            diff = diff.reshape(diff.shape[0] * diff.shape[1], diff.shape[2])
+            scores = torch.linalg.norm(diff, dim=1)
+            raise NotImplementedError # Not normalized yet
+        elif self.method == "cosine_similarity":
+            scores = F.cosine_similarity(features.unsqueeze(1), features_global.unsqueeze(0), dim=2).flatten()
+            scores = torch.sigmoid(scores)
+        elif self.method == "classfier_difference":
+            targets_global
+        targets = (labels.unsqueeze(1) == (labels_global.unsqueeze(0))).reshape(labels.shape[0] * labels_global.shape[0]).float()
+        return scores, targets
+
+class DiscLoss(nn.Module):
+    """Discriminator contrastive loss."""
+    def __init__(self):
+        super(DiscLoss, self).__init__()
+        self.criterion = nn.BCELoss()
+    
+    def forward(self, prob, prob_global, labels, labels_global):
+        scores = prob.unsqueeze(1) * prob_global.unsqueeze(0)
+        scores = scores.sum(dim=2).view(prob.shape[0] * prob_global.shape[0]).float()
+        targets = (labels.unsqueeze(1) == (labels_global.unsqueeze(0))).view(labels.shape[0] * labels_global.shape[0]).float()
+        return self.criterion(scores, targets)
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    

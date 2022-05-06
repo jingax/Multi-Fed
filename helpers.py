@@ -78,6 +78,8 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False
         
         # Update metadata
         meta["n_class"] = 10
+        meta["class_names"] = ["airplane", "automobile", "bird", "cat", 
+                               "deer", "dog", "frog", "horse", "ship", "truck"]
     
     elif dataset == "CIFAR100":
         # Load
@@ -99,6 +101,20 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False
         
         # Update metadata
         meta["n_class"] = 100
+        meta["class_names"] = ["apple", "aquarium_fish", "baby", "bear", "beaver", "bed", "bee",
+                               "beetle", "bicycle", "bottle", "bowl", "boy", "bridge", "bus", "butterfly",
+                               "camel", "can", "castle", "caterpillar", "cattle", "chair", "chimpanzee",
+                               "clock", "cloud", "cockroach", "couch", "cra", "crocodile", "cup", "dinosaur",
+                               "dolphin", "elephant", "flatfish", "forest", "fox", "girl", "hamster", "house",
+                               "kangaroo", "keyboard", "lamp", "lawn_mower", "leopard", "lion", "lizard",
+                               "lobster", "man", "maple_tree", "motorcycle", "mountain", "mouse", "mushroom",
+                               "oak_tree", "orange", "orchid", "otter", "palm_tree", "pear", "pickup_truck",
+                               "pine_tree", "plain", "plate", "poppy", "porcupine", "possum", "rabbit", "raccoon",
+                               "ray", "road", "rocket", "rose", "sea", "seal", "shark", "shrew", "skunk",
+                               "skyscraper", "snail", "snake", "spider", "squirrel", "streetcar", "sunflower",
+                               "sweet_pepper", "table", "tank", "telephone", "television", "tiger", "tractor",
+                               "train", "trout", "tulip", "turtle", "wardrobe", "whale", "willow_tree", "wolf",
+                               "woman", "worm"]
         
     elif dataset == "MNIST":
         print("** Using MNIST **")
@@ -117,7 +133,8 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False
         
         # Update metadata
         meta["n_class"] = 10
-    
+        meta["class_names"] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+        
     elif dataset == "FMNIST":
         print("** Using FMNIST **")
         print("Load train data...")
@@ -135,6 +152,8 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False
         
         # Update metadata
         meta["n_class"] = 10
+        meta["class_names"] = ["T-shirt/top", "Trouser", "Pullover", "Dress", 
+                               "Coat", "Sandal", "Shirt", "Sneaker", "Bag",  "Ankle boot"]
     else:
         raise ValueError("Unknown dataset.")
     
@@ -162,8 +181,11 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False
         train_target = train_target.narrow(0, 0, n_tr)
         test_input = test_input.narrow(0, 0, n_te)
         test_target = test_target.narrow(0, 0, n_te)
-        
-    print("Dataset sizes:\n\t- Train: {}\n\t- Validation {}".format(tuple(train_input.shape), tuple(test_input.shape)))
+    
+    memory_train = (train_input.element_size() * train_input.nelement() + train_target.element_size() * train_target.nelement())/ 1e6
+    memory_val = (test_input.element_size() * test_input.nelement() + test_target.element_size() * test_target.nelement())/ 1e6
+    print("Dataset sizes:\n\t- Train: {} ({} MB)\n\t- Validation {} ({} MB)".format(tuple(train_input.shape), 
+                                                                                    memory_train, tuple(test_input.shape), memory_val))
 
     if normalize == "channel-wise":
         dims = [i for i in range(test.dim()) if i != 1]
@@ -638,7 +660,7 @@ def plot_global_training_history(perf_trackers, metric, title=None, logscale=Fal
         - logscale: Bollean, wheather to set y-axis to log scale.
         - savepath: The savepath (with filename) where to store the figure. Not stored if None is given.
     """
-    fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+    fig, ax = plt.subplots(1, 1, figsize=(6, 6))
     ax.set_title("Training History")
     
     for pt in perf_trackers:
@@ -699,25 +721,14 @@ def initialize_centroids(feat_dim, n_class):
     return torch.rand((n_class, feat_dim)).mul_(2).sub_(1).float()
     
 
-class DiscLoss(nn.Module):
-    """Discriminator contrastive loss."""
-    def __init__(self):
-        super(DiscLoss, self).__init__()
-        self.criterion = nn.BCELoss()
-    
-    def forward(self, prob, prob_global, labels, labels_global):
-        scores = prob.unsqueeze(1) * prob_global.unsqueeze(0)
-        scores = scores.sum(dim=2).view(prob.shape[0] * prob_global.shape[0]).float()
-        targets = (labels.unsqueeze(1) == (labels_global.unsqueeze(0))).view(labels.shape[0] * labels_global.shape[0]).float()
-        return self.criterion(scores, targets)
-
 class FeatureTracker():
     """Track the feature of each clients for learning/analysis/visualization."""
-    def __init__(self, client_models, train_ds_list, meta):
+    def __init__(self, client_models, train_ds_list, feature_dim, meta):
         # Models and datasets
         self.client_models = client_models
         self.train_ds_list = train_ds_list
         self.n_clients = len(client_models)
+        self.feature_dim = feature_dim
         self.meta = meta
         
         # Buffers to store features at each round
@@ -736,7 +747,7 @@ class FeatureTracker():
             for client_id, (model, tr_ds) in enumerate(zip(self.client_models, self.train_ds_list)):
                 model.eval()
                 features = model.features(tr_ds.inputs).cpu()
-                average_features = torch.zeros(self.meta["n_class"], self.meta["feat_dim"])
+                average_features = torch.zeros(self.meta["n_class"], self.feature_dim)
                 for c in range(self.meta["n_class"]):
                     average_features[c] = features[tr_ds.targets.cpu() == c].mean(dim=0)
                 self.buffers[client_id].append(features)
@@ -754,7 +765,7 @@ class FeatureTracker():
             for client_id, (model, tr_ds) in enumerate(zip(self.client_models, self.train_ds_list)):
                 model.eval()
                 features = model.features(tr_ds.inputs).cpu()
-                average_features = torch.zeros(self.meta["n_class"], self.meta["feat_dim"])
+                average_features = torch.zeros(self.meta["n_class"], self.feature_dim)
                 for c in range(self.meta["n_class"]):
                     average_features[c] = features[tr_ds.targets.cpu() == c].mean(dim=0)
                 self.buffers[client_id].append(features)
@@ -772,14 +783,16 @@ class FeatureTracker():
     
     def plot_class_distance(self, class1, class2):
         """Plot the evolution of the distances between classes"""
-        fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+        fig, ax = plt.subplots(1, 1, figsize=(4, 4))
         
-        distances = [[F.cosine_similarity(feat[class1], feat[class2], dim=0) for feat in self.average_features[i]] for i in range(self.n_clients)]
+        distances = [[F.cosine_similarity(feat[class1], feat[class2], dim=0) 
+                      for feat in self.average_features[i]] for i in range(self.n_clients)]
         
         for i, dist in enumerate(distances):
             ax.plot(dist, label="Client {}".format(i))
-        
+        ax.grid()
         ax.legend()
+        ax.set_title("Distanc between {} and {}". format(self.meta["class_names"][class1], self.meta["class_names"][class2]))
         
     def plot_variance_heatmap(self, r=-1):
         fig, ax = plt.subplots(1, 1, figsize=(8, 8))
@@ -789,9 +802,13 @@ class FeatureTracker():
                 dist = [F.cosine_similarity(self.average_features[i][r][c1], self.average_features[i][r][c2], dim=0) for i in range(self.n_clients)]
                 std[c1, c2] = np.array(dist).std()
         #ax.imshow(std, cmap='YlGnBu', interpolation='nearest')
-        sns.heatmap(std, cmap="Blues", annot=True, ax=ax, cbar=False, annot_kws={"fontsize":"small"})
+        sns.heatmap(std, cmap="Blues", annot=True, ax=ax, cbar=False, annot_kws={"fontsize":"small"}, vmin=0.0, vmax=0.2)
 
-    
+def model_size(model):
+    """Compute the memory size (MB) of the given model (parameters + buffers)."""
+    mem_params = sum([param.nelement()*param.element_size() for param in model.parameters()])
+    mem_bufs = sum([buf.nelement()*buf.element_size() for buf in model.buffers()])
+    return (mem_params + mem_bufs)/1e6
     
     
     
