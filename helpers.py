@@ -472,6 +472,43 @@ def ds_to_dl(datasets, batch_size=None, shuffle=True):
             dl = torch.utils.data.DataLoader(datasets, batch_size=batch_size, shuffle=shuffle)
     return dl
 
+def infer(model, data_loader, form="numpy", normalize=False, classify=False):
+    """Function to streamline the inference of a data sample through the given model.
+    
+    Arguments:
+        - model: Torch model
+        - data_loader: Torch dataloader
+        - form: Type of output. Either 'torch' or 'numpy'.
+    Return:
+        - List of predictions and targets.
+    """ 
+    # Increase batchsize for increased speed
+    #data_loader = ds_to_dl(data_loader.dataset, batch_size=10*data_loader.batch_size)
+    
+    # Inference
+    model.eval()
+    with torch.no_grad():
+        idx = 0
+        predictions = []
+        targets = []
+        for x, y in data_loader:
+            predictions.append(model(x).cpu())
+            targets.append(y.cpu())
+        predictions = torch.cat(predictions, dim=0)
+        targets = torch.cat(targets, dim=0)
+    model.train()
+    
+    if normalize:
+        predictions = F.softmax(predictions, dim=1)
+    
+    if classify:
+        predictions = predictions.argmax(dim=1)
+    
+    if form == "numpy":
+        return predictions.numpy(), targets.numpy()
+    elif form == "torch":
+        return predictions, targets
+    
 def evaluate_model(model, data_loader, criterion, n_class):
     """
     Compute loss and different performance metric of a single model using a data_loader.
@@ -601,6 +638,7 @@ class PerfTracker():
         """
         # Figure creation
         n_datasets = len(self.perf_histories)
+        annot = True if self.n_class <= 10 else False
         fig, axs = plt.subplots(1, n_datasets, figsize=(5 * n_datasets, 5))
         fig.suptitle("Confusion Matrix ({})".format(self.ID))
         
@@ -609,7 +647,7 @@ class PerfTracker():
             #axs[0].imshow(self.perf_history_tr["confusion matrix"][index], cmap="Blues")
             #axs[1].imshow(self.perf_history_val["confusion matrix"][index])
             sns.heatmap(perf_dict["confusion matrix"][index], cmap="Blues", 
-                        annot=True, ax=axs[i], cbar=False, fmt='d', annot_kws={"fontsize":"small"})
+                        annot=annot, ax=axs[i], cbar=False, fmt='d', annot_kws={"fontsize":"small"})
 
             # Annotation
             axs[i].set_title("{} Dataset".format(key))
@@ -622,33 +660,6 @@ class PerfTracker():
         # Save the figure at given location
         if savepath is not None:
             fig.savefig(savepath, bbox_inches='tight')
-            
-def infer(model, data_loader, form="numpy", normalize=False, classify=False):
-    """Function to streamline the inference of a data sample through the given model.
-    
-    Arguments:
-        - model: Torch model
-        - data_loader: Torch dataloader
-        - form: Type of output. Either 'torch' or 'numpy'.
-    Return:
-        - List of predictions and targets.
-    """ 
-    # Inference
-    model.eval()
-    with torch.no_grad():
-        predictions = model(data_loader.dataset.inputs).cpu()
-        targets = data_loader.dataset.targets.squeeze().cpu()
-    model.train()
-    if normalize:
-        predictions = F.softmax(predictions, dim=1)
-    
-    if classify:
-        predictions = predictions.argmax(dim=1)
-    
-    if form == "numpy":
-        return predictions.numpy(), targets.numpy()
-    elif form == "torch":
-        return predictions, targets
     
     
 def plot_global_training_history(perf_trackers, metric, title=None, logscale=False, savepath=None):
@@ -723,10 +734,10 @@ def initialize_centroids(feat_dim, n_class):
 
 class FeatureTracker():
     """Track the feature of each clients for learning/analysis/visualization."""
-    def __init__(self, client_models, train_ds_list, feature_dim, meta):
+    def __init__(self, client_models, dl_list, feature_dim, meta):
         # Models and datasets
         self.client_models = client_models
-        self.train_ds_list = train_ds_list
+        self.dl_list = dl_list
         self.n_clients = len(client_models)
         self.feature_dim = feature_dim
         self.meta = meta
@@ -739,42 +750,29 @@ class FeatureTracker():
         # Class counts
         self.class_counts = torch.zeros(self.n_clients, self.meta["n_class"]).to(int)
         for client_id, class_count in enumerate(self.class_counts):
-            val, counts = self.train_ds_list[client_id].targets.unique(return_counts=True)
+            val, counts = self.dl_list[client_id].dataset.targets.unique(return_counts=True)
             self.class_counts[client_id, val.cpu()] = counts.cpu()
 
         # Initialization
-        with torch.no_grad():
-            for client_id, (model, tr_ds) in enumerate(zip(self.client_models, self.train_ds_list)):
-                model.eval()
-                features = model.features(tr_ds.inputs).cpu()
-                average_features = torch.zeros(self.meta["n_class"], self.feature_dim)
-                for c in range(self.meta["n_class"]):
-                    average_features[c] = features[tr_ds.targets.cpu() == c].mean(dim=0)
-                self.buffers[client_id].append(features)
-                self.average_features[client_id].append(average_features)
-            
-            # Compute global averaged
-            global_features = torch.stack([self.average_features[i][0] * self.class_counts[i].unsqueeze(1) 
-                                           for i in range(self.n_clients)], dim=0).sum(dim=0).div(self.class_counts.sum(dim=0).unsqueeze(1))
-            self.global_features.append(global_features)
+        self.new_round()
         
     def new_round(self):
         """Compute the features for each data sample and aggregates the results for the next rounds."""
-        # Compute features and averegage
-        with torch.no_grad():
-            for client_id, (model, tr_ds) in enumerate(zip(self.client_models, self.train_ds_list)):
-                model.eval()
-                features = model.features(tr_ds.inputs).cpu()
-                average_features = torch.zeros(self.meta["n_class"], self.feature_dim)
-                for c in range(self.meta["n_class"]):
-                    average_features[c] = features[tr_ds.targets.cpu() == c].mean(dim=0)
-                self.buffers[client_id].append(features)
-                self.average_features[client_id].append(average_features)
-            
-            # Compute global averaged
-            global_features = torch.stack([self.average_features[i][0] * self.class_counts[i].unsqueeze(1) 
-                                           for i in range(self.n_clients)], dim=0).sum(dim=0).div(self.class_counts.sum(dim=0).unsqueeze(1))
-            self.global_features.append(global_features)
+        # Compute average
+        for client_id, (model, dl) in enumerate(zip(self.client_models, self.dl_list)):
+            features, targets = infer(model.features, dl, form="torch")
+            average_features = torch.zeros(self.meta["n_class"], self.feature_dim)
+            for c in range(self.meta["n_class"]):
+                average_features[c] = features[targets == c].mean(dim=0)
+            # Buffering
+            self.buffers[client_id].append(features)
+            self.average_features[client_id].append(average_features)
+
+        # Compute global averaged
+        global_features = torch.stack([self.average_features[i][0] * self.class_counts[i].unsqueeze(1) 
+                                       for i in range(self.n_clients)], dim=0)
+        global_features = global_features.sum(dim=0).div(self.class_counts.sum(dim=0).unsqueeze(1))
+        self.global_features.append(global_features)
     
     def get_global_features(self, r=-1):
         """Return the global aggregated feature at the given round."""
@@ -801,14 +799,13 @@ class FeatureTracker():
             for c2 in range(self.meta["n_class"]):
                 dist = [F.cosine_similarity(self.average_features[i][r][c1], self.average_features[i][r][c2], dim=0) for i in range(self.n_clients)]
                 std[c1, c2] = np.array(dist).std()
-        #ax.imshow(std, cmap='YlGnBu', interpolation='nearest')
-        sns.heatmap(std, cmap="Blues", annot=True, ax=ax, cbar=False, annot_kws={"fontsize":"small"}, vmin=0.0, vmax=0.2)
+        sns.heatmap(std, cmap="Blues", annot=False, ax=ax, cbar=False, annot_kws={"fontsize":"small"}, vmin=0.0, vmax=0.2)
 
 def model_size(model):
     """Compute the memory size (MB) of the given model (parameters + buffers)."""
     mem_params = sum([param.nelement()*param.element_size() for param in model.parameters()])
     mem_bufs = sum([buf.nelement()*buf.element_size() for buf in model.buffers()])
-    return (mem_params + mem_bufs)/1e6
+    print("Model size: {} MB".format((mem_params + mem_bufs)/1e6))
     
     
     
