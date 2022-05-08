@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# This file contains the helper code that was developped
+# This file contains the models that were developped
 # during my master thesis at MIT.
 #
 # 2022 Frédéric Berdoz, Boston, USA

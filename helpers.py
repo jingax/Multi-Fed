@@ -9,14 +9,12 @@
 import os
 from datetime import datetime
 import time
-import copy
 import random
 
 # Data processing
 import pandas as pd
 import numpy as np
 import scipy
-import cv2
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics.pairwise import euclidean_distances
 from sklearn.manifold import TSNE
@@ -33,7 +31,16 @@ from torchvision import datasets
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-
+def set_seed(seed=0):
+    """Set the same seed for all the RNG.
+    
+    Argument:
+        - seed: the specified seed.
+    """
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
 
 def load_data(dataset="MNIST", data_dir="./data", reduced=False
               , normalize="image-wise", flatten=False, device="cpu"):
@@ -183,12 +190,14 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False
         test_input = test_input.narrow(0, 0, n_te)
         test_target = test_target.narrow(0, 0, n_te)
     
+    # Print dataset information
     memory_train = (train_input.element_size() * train_input.nelement() + train_target.element_size() * train_target.nelement())/ 1e6
     memory_val = (test_input.element_size() * test_input.nelement() + test_target.element_size() * test_target.nelement())/ 1e6
-    print("Dataset sizes:\n\t- Train: {} ({} MB)\n\t- Validation {} ({} MB)".format(tuple(train_input.shape), 
-                                                                                    memory_train, tuple(test_input.shape), memory_val))
-
+    print("Dataset sizes:\n\t- Train: {} ({} MB)\n\t- Validation {} ({} MB)".format(tuple(train_input.shape), memory_train, tuple(test_input.shape), memory_val))
+    
+    # Normalization
     if normalize == "channel-wise":
+        # Normalize each channels independently
         dims = [i for i in range(test.dim()) if i != 1]
         mu = train_input.mean(dim=dims, keepdim=True)
         sig = train_input.std(dim=dims, keepdim=True)
@@ -196,11 +205,13 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False
         test_input.sub_(mu).div_(std)
         
     elif normalize == "image-wise":
+        # Normalize all channels
         mu, std = train_input.mean(), train_input.std()
         train_input.sub_(mu).div_(std)
         test_input.sub_(mu).div_(std)
 
     elif normalize == "sample-wise":
+        # Normalize sample by sample
         dims = [i for i in range(test.dim()) if i != 0]
         mu = train_input.mean(dim=dims, keepdim=True)
         sig = train_input.std(dim=dims, keepdim=True)
@@ -510,7 +521,7 @@ def infer(model, data_loader, form="numpy", normalize=False, classify=False):
     elif form == "torch":
         return predictions, targets
     
-def evaluate_model(model, data_loader, criterion, n_class):
+def evaluate_model(model, data_loader, n_class, criterion=None):
     """
     Compute loss and different performance metric of a single model using a data_loader.
     Returns a dictionary.
@@ -530,7 +541,8 @@ def evaluate_model(model, data_loader, criterion, n_class):
     pred, targets = infer(model, data_loader, form="torch") 
     
     # Compute and store different performance metrics
-    perf["loss"] = criterion(pred, targets).numpy()
+    if criterion is not None:
+        perf["loss"] = criterion(pred, targets).numpy()
     
     if n_class is not None and n_class > 0:
         cm = confusion_matrix(targets, pred.argmax(dim=1), labels=range(n_class))
@@ -569,7 +581,7 @@ class PerfTracker():
         
         self.perf_histories = {}
         for key, dl in self.dl_dict.items():
-            perf = evaluate_model(self.model, dl, self.criterion, self.n_class)
+            perf = evaluate_model(self.model, dl, self.n_class, self.criterion)
             self.perf_histories[key] = {metric : np.expand_dims(value, 0) for metric, value in perf.items()}
         
         # Creating the directory for exports
@@ -589,7 +601,7 @@ class PerfTracker():
         # Compute performance and add it to the performance histories
         current_perf = {}
         for key, dl in self.dl_dict.items():
-            perf = evaluate_model(self.model, dl, self.criterion, self.n_class)
+            perf = evaluate_model(self.model, dl, self.n_class, self.criterion)
             current_perf[key] = perf
             for metric, value in perf.items():
                 self.perf_histories[key][metric] = np.concatenate((self.perf_histories[key][metric], np.expand_dims(value, 0)), axis=0)
@@ -663,7 +675,7 @@ class PerfTracker():
             fig.savefig(savepath, bbox_inches='tight')
     
     
-def plot_global_training_history(perf_trackers, metric, which=None, title=None, logscale=False, savepath=None):
+def plot_global_training_history(perf_trackers, metric, which=None, shaded=True, title=None, logscale=False, savepath=None):
     """Plot the training history of multiple performance trackers.
     
     Arguments:
@@ -673,18 +685,36 @@ def plot_global_training_history(perf_trackers, metric, which=None, title=None, 
         - logscale: Bollean, wheather to set y-axis to log scale.
         - savepath: The savepath (with filename) where to store the figure. Not stored if None is given.
     """
+    # Argument processing
+    if which is None:
+        which = list(perf_trackers[0].perf_histories.keys())
+    elif isinstance(which, str):
+        which = [which]
+    
+    # Figure creation
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))
     ax.set_title("Training History")
     
-    for pt in perf_trackers:
-        if metric == "confusion matrix":
-            raise NotImplementedError
     
-        for key, perf_dict in pt.perf_histories.items():
-            if which is None or key in which:
-                ax.plot(pt.index, perf_dict[metric], label="{} ({})".format(pt.ID, key))
+    if shaded:
+        x = perf_trackers[0].index
+        for ds in which:
+            data = np.empty((len(perf_trackers), len(perf_trackers[0].index)))
+            for i, pt in enumerate(perf_trackers):
+                data[i] = pt.perf_histories[ds][metric]
+            mu = data.mean(0)
+            sigma = data.std(0)
+            ax.plot(x, mu, label="{}".format(ds))
+            ax.fill_between(x, mu-sigma, mu+sigma, alpha=0.5)
+        ax.legend(loc='best')
+    else:
+        for pt in perf_trackers:
+            for ds in which:
+                perf_dict = pt.perf_histories[ds]
+                ax.plot(pt.index, perf_dict[metric], label="{} ({})".format(pt.ID, ds))
+        ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
     
-    ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
+    # Ax properties
     ax.grid(True, which="both")
     ax.set_ylabel(metric)
     
@@ -709,7 +739,6 @@ def distance_correlation(X, Y):
     Arguments:
         - X: 1st data (samples along dim 0 and features along dim 1).
         - Y: 2nd data (samples along dim 0 and features along dim 1).
-    
     Return:
         - dCorr: The distance correlation between X and Y.
     """
@@ -723,18 +752,9 @@ def distance_correlation(X, Y):
     dVarX = np.multiply(A, A).sum() / (n**2)
     dVarY = np.multiply(B, B).sum() / (n**2)
     dCov = np.multiply(A, B).sum() / (n**2)
-    
     dCorr = dCov / np.sqrt(dVarX * dVarY)
-
     return dCorr
- 
-
     
-def initialize_centroids(feat_dim, n_class):
-    """Initialize the featrue centroids for each class."""
-    return torch.rand((n_class, feat_dim)).mul_(2).sub_(1).float()
-    
-
 class FeatureTracker():
     """Track the feature of each clients for learning/analysis/visualization."""
     def __init__(self, client_models, dl_list, feature_dim, meta):
@@ -745,10 +765,13 @@ class FeatureTracker():
         self.feature_dim = feature_dim
         self.meta = meta
         
+        # Create indices for each client
+        self.sizes = [len(dl.dataset) for dl in dl_list]
+        self.idx = [sum(self.sizes[:i]) + torch.arange(self.sizes[i]) for i in range(self.n_clients)]
+        
         # Buffers to store features at each round
-        self.buffers = [[] for _ in range(self.n_clients)]
-        self.average_features = [[] for _ in range(self.n_clients)]
-        self.global_features = []
+        self.buffers_features = [] #buffer[client][round]
+        self.buffers_targets = [] #buffer[client][round]
         
         # Class counts
         self.class_counts = torch.zeros(self.n_clients, self.meta["n_class"]).long()
@@ -760,43 +783,63 @@ class FeatureTracker():
         self.new_round()
         
     def new_round(self):
-        """Compute the features for each data sample and aggregates the results for the next rounds."""
+        """Compute the features for each data sample."""
         # Compute average
+        buffer_features = torch.empty(sum(self.sizes), self.feature_dim)
+        buffer_targets = torch.empty(sum(self.sizes)).long()
         for client_id, (model, dl) in enumerate(zip(self.client_models, self.dl_list)):
             features, targets = infer(model.features, dl, form="torch")
-            average_features = torch.zeros(self.meta["n_class"], self.feature_dim)
-            for c in range(self.meta["n_class"]):
-                if torch.any(targets == c).item():
-                    average_features[c] = features[targets == c].mean(dim=0)
+            buffer_features[self.idx[client_id]] = features
+            buffer_targets[self.idx[client_id]] = targets
             
-            # Buffering
-            self.buffers[client_id].append(features)
-            self.average_features[client_id].append(average_features)
-        
-        # Compute global averaged
-        global_features = torch.stack([self.average_features[i][-1] * self.class_counts[i].unsqueeze(1) 
-                                       for i in range(self.n_clients)], dim=0)
-        
-        global_features = global_features.sum(dim=0).div(self.class_counts.sum(dim=0).unsqueeze(1))
-        self.global_features.append(global_features)
-    
-    def get_global_features(self, r=-1):
-        """Return the global aggregated feature at the given round."""
-        return self.global_features[r]
+        # Buffering
+        self.buffers_features.append(buffer_features)
+        self.buffers_targets.append(buffer_targets)
 
     
-    def plot_class_distance(self, class1, class2):
+    def get_global_features(self, r=-1, f=1.0):
+        """Return the global aggregated feature at the given round.
+        
+        Arguments:
+            - r: Round.
+            - f: Fraction of samples to consider for the average.
+        Return:
+            - Global averaged features.
+        """
+        # Argument processing
+        if f <= 0.0 or f > 1.0:
+            raise ValueError("'f' must be in (0, 1].")
+        
+        # Extract data
+        global_features = torch.empty(self.meta["n_class"], self.feature_dim)
+        features = self.buffers_features[r]
+        targets = self.buffers_targets[r]
+        
+        for c in range(self.meta["n_class"]):
+            if torch.any(targets == c).item():
+                data = features[targets == c]
+                # Radom subsampling for the averaging
+                if f < 1.0:
+                    n = max(1, int(f*data.shape[0]))
+                    idx = torch.randperm(data.shape[0])[:n]
+                    data = data[idx]
+                global_features[c] = data.mean(dim=0)
+        
+        return global_features
+
+    
+    def plot_class_distance(self, c1, c2):
         """Plot the evolution of the distances between classes"""
         fig, ax = plt.subplots(1, 1, figsize=(4, 4))
         
-        distances = [[F.cosine_similarity(feat[class1], feat[class2], dim=0) 
+        distances = [[torch.linalg.norm(feat[c1] - feat[c2]) 
                       for feat in self.average_features[i]] for i in range(self.n_clients)]
         
         for i, dist in enumerate(distances):
             ax.plot(dist, label="Client {}".format(i))
         ax.grid()
-        ax.legend()
-        ax.set_title("Distanc between {} and {}". format(self.meta["class_names"][class1], self.meta["class_names"][class2]))
+        #ax.legend()
+        ax.set_title("Distanc between {} and {}". format(self.meta["class_names"][c1], self.meta["class_names"][c2]))
         
     def plot_variance_heatmap(self, r=-1):
         """WIP"""
@@ -808,21 +851,54 @@ class FeatureTracker():
                 std[c1, c2] = np.array(dist).std()
         sns.heatmap(std, cmap="Blues", annot=False, ax=ax, cbar=False, annot_kws={"fontsize":"small"}, vmin=0.0, vmax=0.2)
     
-    def plot_tSNE(self):
+    def plot_tSNE(self, p=30):
         """Plot the t-SNE dimension reduction of the averaged feature."""
-        embedder = TSNE(n_components=2, init='random', perplexity=30)
+        embedder = TSNE(n_components=2, init='random', perplexity=p)
+        feat_emb = embedder.fit_transform(self.buffers_features[-1])
         
-        data = torch.cat([self.average_features[i][-1][self.average_features[i][-1].all(dim=1)] for i in range(self.n_clients)])
-        users = torch.cat([i * torch.ones(self.meta["n_class"])[self.average_features[i][-1].all(dim=1)] for i in range(self.n_clients)])
-        feat_emb = embedder.fit_transform(data.numpy())
-        plt.scatter(feat_emb[:,0], feat_emb[:,1], c=users, s=10, cmap="tab10")
+        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+        ax.scatter(feat_emb[:,0], feat_emb[:,1], c=self.buffers_targets[-1], s=10, cmap="tab10")
+
+            
 
 def model_size(model):
-    """Compute the memory size (MB) of the given model (parameters + buffers)."""
+    """Compute the memory size (MB) of the given model (parameters + buffers).
+    
+    Arguments:
+        - model: Model to analyse.
+    """
     mem_params = sum([param.nelement()*param.element_size() for param in model.parameters()])
     mem_bufs = sum([buf.nelement()*buf.element_size() for buf in model.buffers()])
     print("Model size: {} MB".format((mem_params + mem_bufs)/1e6))
     
+
+def compare(pt, pt_baseline, metric="accuracy", r=-1, which=None):
+    """Plot the performance improvement between baseline and new method.
+    
+    Arguments:
+        - pt: Performance trackers for the new method.
+        - pt_baseline: Performance trackers for the baseline method.
+        - metric: Metric to analyse.
+        - r: Round to analyse.
+        - which: Dataset to evaluate.
+    """
+    # Arguement processing
+    n_clients = len(pt)
+    
+    if which is None:
+        which = list(pt[0].perf_histories.keys())
+    elif isinstance(which, str):
+        which = [which]
+    
+    
+    print("Average {} improvement:".format(metric))
+    diff_dict = {}
+    for ds in which:
+        diff = np.array([pt[i].perf_histories[ds][metric][r] - pt_baseline[i].perf_histories[ds][metric][r] for i in range(n_clients)])
+        diff_dict[ds] = diff
+        print("\t{}: {:.3f} (+- {:.3f})".format(ds, diff.mean(), diff.std()))
+    
+    return diff_dict
     
     
     
