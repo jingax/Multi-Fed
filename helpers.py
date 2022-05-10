@@ -613,12 +613,13 @@ class PerfTracker():
             
         return current_perf
 
-    def plot_training_history(self, metric="loss", logscale=False, savepath=None):
+    def plot_training_history(self, metric="loss", logscale=False, title="Training History", savepath=None):
         """Plot the training history.
         
         Arguments:
             - metrics: metrics to plot.
             - logscale: Bollean, wheather to set y-axis to log scale.
+            - title: Title to display.
             - savepath: filepath (and filename) where the plot must be stored. Not stored if None is given.
         """
         
@@ -634,10 +635,16 @@ class PerfTracker():
             ax.grid(True, which="both")
             ax.set_ylabel(metric)
         
-        # Set y-axis to logscale
+        # Parameters
         if logscale:
             ax.set_yscale('log')
-            
+        
+        if title is not None:
+            ax.set_title(title)
+        
+        if metric == "accuracy":
+            ax.set_ylim(0, 1)
+        
         # Save the figure at given location
         if savepath is not None:
             fig.savefig(savepath, bbox_inches='tight')
@@ -675,7 +682,7 @@ class PerfTracker():
             fig.savefig(savepath, bbox_inches='tight')
     
     
-def plot_global_training_history(perf_trackers, metric, which=None, shaded=True, title=None, logscale=False, savepath=None):
+def plot_global_training_history(perf_trackers, metric, which=None, shaded=True, title="Training History", logscale=False, savepath=None):
     """Plot the training history of multiple performance trackers.
     
     Arguments:
@@ -692,9 +699,7 @@ def plot_global_training_history(perf_trackers, metric, which=None, shaded=True,
         which = [which]
     
     # Figure creation
-    fig, ax = plt.subplots(1, 1, figsize=(6, 6))
-    ax.set_title("Training History")
-    
+    fig, ax = plt.subplots(1, 1, figsize=(6, 6))    
     
     if shaded:
         x = perf_trackers[0].index
@@ -797,18 +802,18 @@ class FeatureTracker():
         self.buffers_targets.append(buffer_targets)
 
     
-    def get_global_features(self, r=-1, f=1.0):
+    def get_global_features(self, r=-1, n_avg=None):
         """Return the global aggregated feature at the given round.
         
         Arguments:
             - r: Round.
-            - f: Fraction of samples to consider for the average.
+            - n_avg: Number of samples to consider for the average (all if 0 or None).
         Return:
             - Global averaged features.
         """
         # Argument processing
-        if f <= 0.0 or f > 1.0:
-            raise ValueError("'f' must be in (0, 1].")
+        if n_avg is not None and n_avg < 0:
+            raise ValueError("'n_avg' must be a positive integer.")
         
         # Extract data
         global_features = torch.empty(self.meta["n_class"], self.feature_dim)
@@ -819,8 +824,8 @@ class FeatureTracker():
             if torch.any(targets == c).item():
                 data = features[targets == c]
                 # Radom subsampling for the averaging
-                if f < 1.0:
-                    n = max(1, int(f*data.shape[0]))
+                if n_avg:
+                    n = min(n_avg, int(data.shape[0]))
                     idx = torch.randperm(data.shape[0])[:n]
                     data = data[idx]
                 global_features[c] = data.mean(dim=0)
