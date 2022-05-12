@@ -760,22 +760,22 @@ def distance_correlation(X, Y):
     dCorr = dCov / np.sqrt(dVarX * dVarY)
     return dCorr
     
-class FeatureTracker():
-    """Track the feature of each clients for learning/analysis/visualization."""
-    def __init__(self, client_models, dl_list, feature_dim, meta):
+class OutputTracker():
+    """Track the output of each clients for learning/analysis/visualization."""
+    def __init__(self, client_models, dl_list, dim, meta):
         # Models and datasets
         self.client_models = client_models
         self.dl_list = dl_list
         self.n_clients = len(client_models)
-        self.feature_dim = feature_dim
+        self.dim = dim
         self.meta = meta
         
         # Create indices for each client
         self.sizes = [len(dl.dataset) for dl in dl_list]
         self.idx = [sum(self.sizes[:i]) + torch.arange(self.sizes[i]) for i in range(self.n_clients)]
         
-        # Buffers to store features at each round
-        self.buffers_features = [] #buffer[client][round]
+        # Buffers to store outputs at each round
+        self.buffers_outputs = [] #buffer[client][round]
         self.buffers_targets = [] #buffer[client][round]
         
         # Class counts
@@ -788,49 +788,49 @@ class FeatureTracker():
         self.new_round()
         
     def new_round(self):
-        """Compute the features for each data sample."""
+        """Compute the outputs for each data sample."""
         # Compute average
-        buffer_features = torch.empty(sum(self.sizes), self.feature_dim)
+        buffer_outputs = torch.empty(sum(self.sizes), self.dim)
         buffer_targets = torch.empty(sum(self.sizes)).long()
         for client_id, (model, dl) in enumerate(zip(self.client_models, self.dl_list)):
-            features, targets = infer(model.features, dl, form="torch")
-            buffer_features[self.idx[client_id]] = features
+            outputs, targets = infer(model, dl, form="torch")
+            buffer_outputs[self.idx[client_id]] = outputs
             buffer_targets[self.idx[client_id]] = targets
             
         # Buffering
-        self.buffers_features.append(buffer_features)
+        self.buffers_outputs.append(buffer_outputs)
         self.buffers_targets.append(buffer_targets)
 
     
-    def get_global_features(self, r=-1, n_avg=None):
-        """Return the global aggregated feature at the given round.
+    def get_global_outputs(self, r=-1, n_avg=None):
+        """Return the global aggregated output at the given round.
         
         Arguments:
             - r: Round.
             - n_avg: Number of samples to consider for the average (all if 0 or None).
         Return:
-            - Global averaged features.
+            - Global averaged outputs.
         """
         # Argument processing
         if n_avg is not None and n_avg < 0:
             raise ValueError("'n_avg' must be a positive integer.")
         
         # Extract data
-        global_features = torch.empty(self.meta["n_class"], self.feature_dim)
-        features = self.buffers_features[r]
+        global_outputs = torch.empty(self.meta["n_class"], self.dim)
+        outputs = self.buffers_outputs[r]
         targets = self.buffers_targets[r]
         
         for c in range(self.meta["n_class"]):
             if torch.any(targets == c).item():
-                data = features[targets == c]
+                data = outputs[targets == c]
                 # Radom subsampling for the averaging
                 if n_avg:
                     n = min(n_avg, int(data.shape[0]))
                     idx = torch.randperm(data.shape[0])[:n]
                     data = data[idx]
-                global_features[c] = data.mean(dim=0)
+                global_outputs[c] = data.mean(dim=0)
         
-        return global_features
+        return global_outputs
 
     
     def plot_class_distance(self, c1, c2):
@@ -838,7 +838,7 @@ class FeatureTracker():
         fig, ax = plt.subplots(1, 1, figsize=(4, 4))
         
         distances = [[torch.linalg.norm(feat[c1] - feat[c2]) 
-                      for feat in self.average_features[i]] for i in range(self.n_clients)]
+                      for feat in self.average_outputs[i]] for i in range(self.n_clients)]
         
         for i, dist in enumerate(distances):
             ax.plot(dist, label="Client {}".format(i))
@@ -852,14 +852,14 @@ class FeatureTracker():
         std = np.zeros((self.meta["n_class"], self.meta["n_class"]))  
         for c1 in range(self.meta["n_class"]):
             for c2 in range(self.meta["n_class"]):
-                dist = [F.cosine_similarity(self.average_features[i][r][c1], self.average_features[i][r][c2], dim=0) for i in range(self.n_clients)]
+                dist = [F.cosine_similarity(self.average_outputs[i][r][c1], self.average_outputs[i][r][c2], dim=0) for i in range(self.n_clients)]
                 std[c1, c2] = np.array(dist).std()
         sns.heatmap(std, cmap="Blues", annot=False, ax=ax, cbar=False, annot_kws={"fontsize":"small"}, vmin=0.0, vmax=0.2)
     
     def plot_tSNE(self, p=30):
-        """Plot the t-SNE dimension reduction of the averaged feature."""
+        """Plot the t-SNE dimension reduction of the averaged output."""
         embedder = TSNE(n_components=2, init='random', perplexity=p)
-        feat_emb = embedder.fit_transform(self.buffers_features[-1])
+        feat_emb = embedder.fit_transform(self.buffers_outputs[-1])
         
         fig, ax = plt.subplots(1, 1, figsize=(5, 5))
         ax.scatter(feat_emb[:,0], feat_emb[:,1], c=self.buffers_targets[-1], s=10, cmap="tab10")
