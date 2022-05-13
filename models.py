@@ -24,11 +24,11 @@ def get_model(model, feat_dim, meta):
     """
     
     if model == "LeNet5":
-        return LeNet5(in_channels=meta["in_dimension"][0], feat_dim=feat_dim, output_shape=meta["n_class"])
+        return LeNet5(in_channels=meta["in_dimension"][0], feat_dim=feat_dim, output_shape=meta["n_class"], dropout=0)
     if model == "ResNet9":
-        return ResNet9(in_channels=meta["in_dimension"][0], feat_dim=feat_dim, output_shape=meta["n_class"])
+        return ResNet9(in_channels=meta["in_dimension"][0], feat_dim=feat_dim, output_shape=meta["n_class"], dropout=0)
     if model == "ResNet18":
-        return ResNet18(in_channels=meta["in_dimension"][0], feat_dim=feat_dim, output_shape=meta["n_class"])
+        return ResNet18(in_channels=meta["in_dimension"][0], feat_dim=feat_dim, output_shape=meta["n_class"], dropout=0)
 
 class L2Norm(nn.Module):
     """
@@ -87,7 +87,7 @@ def ResNet18_pytorch(in_channels, output_shape, pretrained=False):
     return model
 
 class LeNet5(nn.Module):
-    def __init__(self, in_channels, feat_dim, output_shape):
+    def __init__(self, in_channels, feat_dim, output_shape, dropout=0.25):
         """Create a personalized model base on the LeNet5 model archtecture.
     
         Arguments:
@@ -99,18 +99,18 @@ class LeNet5(nn.Module):
         self.features = nn.Sequential(nn.Conv2d(in_channels = in_channels, out_channels=6, kernel_size=5, stride=1, padding=2),
                                       nn.ReLU(),
                                       nn.MaxPool2d(kernel_size=2, stride=2),
-                                      nn.Dropout2d(0.25),
+                                      nn.Dropout2d(dropout),
                                       nn.Conv2d(in_channels=6, out_channels=16, kernel_size=5, stride=1, padding=2),
                                       nn.ReLU(),
                                       nn.MaxPool2d(kernel_size=2, stride=2),
-                                      nn.Dropout2d(0.25),
+                                      nn.Dropout2d(dropout),
                                       nn.Conv2d(in_channels=16, out_channels=120, kernel_size=3, stride=1, padding=1),
                                       nn.ReLU(),
                                       nn.AdaptiveAvgPool2d(output_size=(1, 1)),
                                       nn.Flatten(start_dim=1),
                                       nn.Linear(120, feat_dim),
                                       nn.Tanh(),
-                                      nn.Dropout(0))
+                                      nn.Dropout(dropout))
         self.classifier = nn.Linear(feat_dim, output_shape)
 
 
@@ -165,7 +165,7 @@ class ResNet9(nn.Module):
     """
     Residual network with 9 layers.
     """
-    def __init__(self, in_channels, feat_dim, output_shape):
+    def __init__(self, in_channels, feat_dim, output_shape, dropout=0.25):
         super(ResNet9, self).__init__()
 
         self.features = nn.Sequential(
@@ -176,7 +176,7 @@ class ResNet9(nn.Module):
             nn.BatchNorm2d(num_features=128),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2),
-            ResBlock(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1, dropout=0.25),
+            ResBlock(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1, dropout=dropout),
             nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, stride=1, padding=1, bias=False),
             nn.BatchNorm2d(num_features=256),
             nn.ReLU(inplace=True),
@@ -185,13 +185,13 @@ class ResNet9(nn.Module):
             nn.BatchNorm2d(num_features=256),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2),
-            ResBlock(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1, dropout=0.25),
+            ResBlock(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1, dropout=dropout),
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.AdaptiveAvgPool2d(output_size=(1, 1)),
             nn.Flatten(start_dim=1),
             nn.Linear(in_features=256, out_features=feat_dim),
             nn.ELU(),
-            nn.Dropout(0.25))
+            nn.Dropout(dropout))
                                       
         self.classifier = nn.Linear(in_features=feat_dim, out_features=output_shape, bias=True)
         

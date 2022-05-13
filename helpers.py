@@ -682,7 +682,7 @@ class PerfTracker():
             fig.savefig(savepath, bbox_inches='tight')
     
     
-def plot_global_training_history(perf_trackers, metric, which=None, shaded=True, title="Training History", logscale=False, savepath=None):
+def plot_global_training_history(perf_trackers, metric, which=None, shaded=True, title=None, logscale=False, savepath=None):
     """Plot the training history of multiple performance trackers.
     
     Arguments:
@@ -699,7 +699,7 @@ def plot_global_training_history(perf_trackers, metric, which=None, shaded=True,
         which = [which]
     
     # Figure creation
-    fig, ax = plt.subplots(1, 1, figsize=(6, 6))    
+    fig, ax = plt.subplots(1, 1, figsize=(4, 4))    
     
     if shaded:
         x = perf_trackers[0].index
@@ -711,7 +711,12 @@ def plot_global_training_history(perf_trackers, metric, which=None, shaded=True,
             sigma = data.std(0)
             ax.plot(x, mu, label="{}".format(ds))
             ax.fill_between(x, mu-sigma, mu+sigma, alpha=0.5)
-        ax.legend(loc='best')
+        
+        if metric == "accuracy":
+            pos = "lower right"
+        elif metric == "loss":
+            pos = "upper right"
+        ax.legend(loc=pos)
     else:
         for pt in perf_trackers:
             for ds in which:

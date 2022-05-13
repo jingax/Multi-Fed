@@ -42,6 +42,7 @@ def get_args():
     parser.add_argument('--data_dir', type=str, default="./data", help="")
     parser.add_argument('--config_file', type=str, default=None, help="")
     parser.add_argument('--device', type=str, default=None, help="")
+    parser.add_argument('--preset', type=str, default=None, help="")
     parser.add_argument('--seed', type=int, default=0, help="")
     args = parser.parse_args()
     return args
@@ -51,7 +52,7 @@ def run(n_clients, dataset, model, alpha="uniform", rounds=100,
         batch_size=32, epoch_per_round=1, lr=1e-3, optimizer="adam", feature_dim=100,
         n_avg=None, lambda_kd=1.0, lambda_disc=1.0, kd_type="feature", sizes=None, reduced=False, 
         track_history=1, fed_avg=False, export_dir=None, data_dir="./data",
-        device=None, seed=0):
+        device=None, preset=None, seed=0):
     
     """Run an experiment of PrivateKD.
     
@@ -62,6 +63,29 @@ def run(n_clients, dataset, model, alpha="uniform", rounds=100,
         - feature_trackers: The feature trackers.
     """
     # Argument processing
+    if preset is not None:
+        if preset in ["fl", "FL", "fedavg", "FedAvg"]:
+            print("Running FL with {} clients".format(n_clients))
+            n_avg = None
+            lambda_kd=0
+            lambda_disc=0
+            fed_avg = "model"
+        elif preset in ["fd", "FD"]:
+            print("Running FD with {} clients".format(n_clients))
+            n_avg = None
+            lambda_disc=0
+            kd_type = "output"
+            fed_avg = False
+        elif preset in ["il", "IL"]:
+            print("Running IL with {} clients".format(n_clients))
+            lambda_kd=0
+            lambda_disc=0
+            fed_avg = False
+        else:
+            raise ValueError("Unknown preset {} (FL, FD or IL).".format(preset))
+    else:
+        print("Running CFKD with {} clients".format(n_clients))
+    
     if kd_type == "output" and lambda_disc != 0:
         lambda_disc = 0
         print("Warning: lambda_disc has been set to 0 since output-based kd is used (FD).")
@@ -247,6 +271,39 @@ def run(n_clients, dataset, model, alpha="uniform", rounds=100,
                                      savepath=os.path.join(fig_directory, "loss_history.png") if export_dir is not None else None)
     return perf_trackers
 
+def benchmark(n_clients, dataset, model, alpha="uniform", rounds=100, 
+              batch_size=32, epoch_per_round=1, lr=1e-3, optimizer="adam", feature_dim=100, 
+              n_avg=None, fed_avg=None, lambda_kd=1.0, lambda_disc=1.0, sizes=None, reduced=False, 
+              track_history=1, export_dir=None, data_dir="./data",
+              device=None, seed=0):
+    """Benchmark privateKD with FedAvg, FD and independent learning."""
+    
+    print(40 * "*")
+    print("Starting benchmark")
+    print(40 * "*")
+    pt_cfkd = run(n_clients=n_clients, dataset=dataset, model=model, alpha=alpha, rounds=rounds, 
+                  batch_size=batch_size, epoch_per_round=epoch_per_round, lr=lr, optimizer=optimizer, 
+                  feature_dim=feature_dim, n_avg=n_avg, lambda_kd=lambda_kd, lambda_disc=lambda_disc, 
+                  sizes=sizes, fed_avg=fed_avg, reduced=reduced, track_history=track_history, 
+                  export_dir=export_dir, data_dir=data_dir, device=device, seed=seed)
+    print(20 * "*")
+    pt_fl = run(n_clients=n_clients, dataset=dataset, model=model, alpha=alpha, rounds=rounds, 
+                batch_size=batch_size, epoch_per_round=epoch_per_round, lr=lr, optimizer=optimizer, 
+                feature_dim=feature_dim, sizes=sizes, reduced=reduced, track_history=track_history,
+                export_dir=export_dir, data_dir=data_dir, device=device, preset="fl", seed=seed)
+    print(20 * "*")
+    pt_fd = run(n_clients=n_clients, dataset=dataset, model=model, alpha=alpha, rounds=rounds, 
+                batch_size=batch_size, epoch_per_round=epoch_per_round, lr=lr, optimizer=optimizer, 
+                feature_dim=feature_dim, lambda_kd=lambda_kd, sizes=sizes, reduced=reduced, track_history=track_history,
+                export_dir=export_dir, data_dir=data_dir, device=device, preset="fd", seed=seed)
+    print(20 * "*")
+    pt_il = run(n_clients=n_clients, dataset=dataset, model=model, alpha=alpha, rounds=rounds, 
+                batch_size=batch_size, epoch_per_round=epoch_per_round, lr=lr, optimizer=optimizer, 
+                feature_dim=feature_dim, sizes=sizes, reduced=reduced, track_history=track_history, 
+                export_dir=export_dir, data_dir=data_dir, device=device, preset="il", seed=seed)
+    
+    print("Benchmark done.")
+    return pt_cfkd, pt_fl, pt_fd, pt_il
     
 if __name__ == "__main__":
     # Parse arguments
