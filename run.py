@@ -133,11 +133,8 @@ def run(n_clients, dataset, model, alpha="uniform", rounds=100,
     # Performance tracker
     if fed_avg == "model":
         perf_trackers = [hlp.PerfTracker(global_model, 
-                                         {"Train": train_dl_list[i], "Validation": val_dl_list[i]}, 
+                                         {"Train": train_dl_list[i], "Validation": val_dl_list[i], "Train (global)": global_train_dl, "Validation (global)": global_val_dl}, 
                                          criterion, meta["n_class"], ID="Client {}".format(i)) for i in range(n_clients)]
-        perf_tracker_global = hlp.PerfTracker(global_model, 
-                                         {"Train (global)": global_train_dl, "Validation (global)": global_val_dl}, 
-                                         criterion, meta["n_class"], ID="Global")
         
     else:
         perf_trackers = [hlp.PerfTracker(client_models[i], 
@@ -183,22 +180,21 @@ def run(n_clients, dataset, model, alpha="uniform", rounds=100,
                     # Local representation
                     features = model.features(inputs)
                     logits = model.classifier(features)
-                    
-                    if lambda_kd > 0 or lambda_disc > 0:
-                        # Compute estimated probabilities
-                        teacher_data = tracker.get_global_outputs(n_avg=n_avg).to(device)
+
                         
-                    
                     # Optimization step
                     loss = criterion(logits, targets)
                     if lambda_kd > 0:
+                        # Compute estimated probabilities
+                        teacher_data = tracker.get_global_outputs().to(device)
                         if kd_type == "feature":
                             loss += lambda_kd * criterion_kd(features, teacher_data[targets])
                         elif kd_type == "output":
                             loss += lambda_kd * criterion_kd(logits, teacher_data[targets])
                     if lambda_disc > 0:
+                        teacher_data_rand = tracker.get_global_outputs(n_avg=n_avg).to(device)
                         targets_global = torch.arange(meta["n_class"]).to(device)
-                        scores, disc_targets = disc(features, teacher_data, targets, targets_global)
+                        scores, disc_targets = disc(features, teacher_data_rand, targets, targets_global)
                         loss += lambda_disc * criterion_disc(scores, disc_targets)
                     
                     # Optimization step
@@ -235,8 +231,6 @@ def run(n_clients, dataset, model, alpha="uniform", rounds=100,
         if (track_history and (r+1) % track_history == 0) or (r+1) == rounds:
             for client_id in range(n_clients):
                 perf_trackers[client_id].new_eval(index=r+1)
-            if fed_avg == "model":
-                perf_tracker_global.new_eval(index=r+1)  
                 
         # Compute representations
         tracker.new_round()
@@ -244,39 +238,16 @@ def run(n_clients, dataset, model, alpha="uniform", rounds=100,
         t1 = time.time()    
         print("\rRound {} done. ({:.1f}s)".format(r+1, t1-t0), end=6*" ")  
     
+    
     # Plot training history and return
-    if fed_avg == "model":
-        hlp.plot_global_training_history(perf_trackers, metric="accuracy", title="Training history: Accuracy",
-                                         savepath=os.path.join(fig_directory, "accuracy_history.png") if export_dir is not None else None)
-        hlp.plot_global_training_history(perf_trackers, metric="loss", title="Training history: Loss",
-                                         savepath=os.path.join(fig_directory, "loss_history.png") if export_dir is not None else None)
-        
-        perf_tracker_global.plot_training_history(metric="loss", title="Training history: Loss",
-                                                  savepath=os.path.join(fig_directory, "loss_history_global.png") if export_dir is not None else None)
-        perf_tracker_global.plot_training_history(metric="accuracy", title="Training history: Accuracy",
-                                                  savepath=os.path.join(fig_directory, "accuracy_history_global.png") if export_dir is not None else None)
-        return perf_trackers, perf_tracker_global, tracker
-    else:
-        hlp.plot_global_training_history(perf_trackers, metric="accuracy", title="Training history: Accuracy",
+    print("\nDone.")
+    hlp.plot_global_training_history(perf_trackers, metric="accuracy", title="Training history: Accuracy",
                                      savepath=os.path.join(fig_directory, "accuracy_history.png") if export_dir is not None else None)
-        hlp.plot_global_training_history(perf_trackers, metric="loss", title="Training history: Loss",
+    hlp.plot_global_training_history(perf_trackers, metric="loss", title="Training history: Loss",
                                      savepath=os.path.join(fig_directory, "loss_history.png") if export_dir is not None else None)
-        return perf_trackers, tracker
+    return perf_trackers
 
     
-def run_FD(n_clients, dataset, model, alpha="uniform", rounds=100, 
-           batch_size=32, epoch_per_round=1, lr=1e-3, optimizer="adam", feature_dim=100, 
-           lambda_kd=1.0, sizes=None, reduced=False, track_history=1, export_dir=None, data_dir="./data",
-           device=None, seed=0):
-    
-    """Run fully decentralized federated learning (no central server).
-    
-    Arguments:
-    
-    Return:
-    """
-    raise NotImplementedError
-
 if __name__ == "__main__":
     # Parse arguments
     args = get_args()
