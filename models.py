@@ -87,7 +87,7 @@ def ResNet18_pytorch(in_channels, output_shape, pretrained=False):
     return model
 
 class LeNet5(nn.Module):
-    def __init__(self, in_channels, feat_dim, output_shape, dropout=0.25):
+    def __init__(self, in_channels, feat_dim, output_shape, dropout=0):
         """Create a personalized model base on the LeNet5 model archtecture.
     
         Arguments:
@@ -119,7 +119,72 @@ class LeNet5(nn.Module):
         x = self.classifier(x)
         return x
     
+class LeNet5(nn.Module):
+    def __init__(self, in_channels, feat_dim, output_shape, dropout=0.25):
+        """Create a personalized model base on the LeNet5 model archtecture.
+    
+        Arguments:
+            -in_channels: Number of input channels
+            -output_shape: Number of class (for the output dimention)
+            -dropout_rate: Percentage of neurons to drop.
+        """
+        super(LeNet5, self).__init__()
+        self.features = nn.Sequential(nn.Conv2d(in_channels = in_channels, out_channels=6, kernel_size=5, stride=1, padding=2),
+                                      nn.ReLU(),
+                                      nn.MaxPool2d(kernel_size=2, stride=2),
+                                      nn.Dropout2d(dropout),
+                                      nn.Conv2d(in_channels=6, out_channels=16, kernel_size=5, stride=1, padding=2),
+                                      nn.ReLU(),
+                                      nn.MaxPool2d(kernel_size=2, stride=2),
+                                      nn.Dropout2d(dropout),
+                                      nn.Conv2d(in_channels=16, out_channels=120, kernel_size=3, stride=1, padding=1),
+                                      nn.ReLU(),
+                                      nn.AdaptiveAvgPool2d(output_size=(1, 1)),
+                                      nn.Flatten(start_dim=1),
+                                      nn.Linear(120, feat_dim),
+                                      nn.Tanh(),
+                                      nn.Dropout(dropout))
+        self.classifier = nn.Linear(feat_dim, output_shape)
 
+
+    def forward(self, x):
+        x = self.features(x)
+        x = self.classifier(x)
+        return x
+
+
+class AlexNet(nn.Module):
+    def __init__(self, in_channels, feat_dim, output_shape, dropout=0.25):
+        """Create a personalized model base on the LeNet5 model archtecture.
+    
+        Arguments:
+            -in_channels: Number of input channels
+            -output_shape: Number of class (for the output dimention)
+            -dropout_rate: Percentage of neurons to drop.
+        """
+        super(AlexNet, self).__init__()
+        self.features = nn.Sequential(nn.Conv2d(in_channels = in_channels, out_channels=6, kernel_size=5, stride=1, padding=2),
+                                      nn.ReLU(),
+                                      nn.MaxPool2d(kernel_size=2, stride=2),
+                                      nn.Dropout2d(dropout),
+                                      nn.Conv2d(in_channels=6, out_channels=16, kernel_size=5, stride=1, padding=2),
+                                      nn.ReLU(),
+                                      nn.MaxPool2d(kernel_size=2, stride=2),
+                                      nn.Dropout2d(dropout),
+                                      nn.Conv2d(in_channels=16, out_channels=120, kernel_size=3, stride=1, padding=1),
+                                      nn.ReLU(),
+                                      nn.AdaptiveAvgPool2d(output_size=(1, 1)),
+                                      nn.Flatten(start_dim=1),
+                                      nn.Linear(120, feat_dim),
+                                      nn.Tanh(),
+                                      nn.Dropout(dropout))
+        self.classifier = nn.Linear(feat_dim, output_shape)
+
+
+    def forward(self, x):
+        x = self.features(x)
+        x = self.classifier(x)
+        return x
 
 class ResBlock(nn.Module):
     """
@@ -190,7 +255,7 @@ class ResNet9(nn.Module):
             nn.AdaptiveAvgPool2d(output_size=(1, 1)),
             nn.Flatten(start_dim=1),
             nn.Linear(in_features=256, out_features=feat_dim),
-            nn.ELU(),
+            nn.Tanh(),
             nn.Dropout(dropout))
                                       
         self.classifier = nn.Linear(in_features=feat_dim, out_features=output_shape, bias=True)
@@ -223,7 +288,7 @@ class ResNet18(nn.Module):
             nn.AdaptiveAvgPool2d(output_size=(1, 1)),
             nn.Flatten(start_dim=1),
             nn.Linear(in_features=512, out_features=feat_dim),
-            nn.ELU(),
+            nn.Tanh(),
             nn.Dropout(dropout))
                                       
         self.classifier = nn.Linear(in_features=feat_dim, out_features=output_shape, bias=True)
@@ -238,48 +303,38 @@ class Discriminator(nn.Module):
     """
     Discriminator for the contrastive loss.
     """
-    def __init__(self, method, classifier=None, temperature=1):
+    def __init__(self, method, classifier=None, n_class=None, feat_dim=None, temperature=1):
         super(Discriminator, self).__init__()
         self.method = method
-        self.classifier = classifier
         self.T = temperature
-        if method in ["prob_product", "exponential_prob"] and classifier is None:
-            raise ValueError("A classifier is required for the method '{}'.".format(method))
+        self.n_class = n_class
+        
+        if classifier is not None:
+            self.classifier = classifier
+        elif feat_dim is not None and n_class is not None:
+            self.classifier = nn.Sequential(nn.Linear(in_features=feat_dim, out_features=n_class))
+        else:
+            raise ValueError("A classifier must be given if 'feat_dim' and 'n_class' are not specified.")
+        
+        if method == "exponential_prob" and n_class is None:
+            raise ValueError("'n_class' must be specified for 'exponential_prob'.")
         
     def forward(self, features, features_global, labels, labels_global):
-        if self.method == "distance":
-            # Euclidian distance
-            diff = features.unsqueeze(1) - features_global.unsqueeze(0)
-            diff = diff.reshape(diff.shape[0] * diff.shape[1], diff.shape[2])
-            scores = torch.linalg.norm(diff, dim=1)
-            raise NotImplementedError # Not normalized yet
-        elif self.method == "cosine_similarity":
-            # Cosine similarity with sigmoid
-            scores = F.cosine_similarity(features.unsqueeze(1), features_global.unsqueeze(0), dim=2).flatten()
-            scores = scores / 2 + 0.5 # Bring it to the range [0,1]
-        elif self.method == "prob_product":
+        if self.method == "prob_product":
             # Scalar product between estimated probabilities
             prob =  F.softmax(self.classifier(features)/self.T, dim=1)
             prob_global =  F.softmax(self.classifier(features_global)/self.T, dim=1)
             scores = (prob.unsqueeze(1) * prob_global.unsqueeze(0)).sum(-1).flatten()
         elif self.method == "exponential_prob":
             # Scalar product between estimated probabilities with exponential form
-            raise NotImplementedError
+            logits =  self.classifier(features)
+            logits_global =  self.classifier(features_global)
+            log_scores = (logits.unsqueeze(1) * logits_global.unsqueeze(0)).sum(-1).flatten()
+            scores = torch.exp(log_scores/self.T) / (torch.exp(log_scores/self.T) + (self.n_class-1)/self.n_class)
         
         targets = (labels.unsqueeze(1) == (labels_global.unsqueeze(0))).reshape(labels.shape[0] * labels_global.shape[0]).float()
         return scores, targets
 
-class DiscLoss(nn.Module):
-    """Discriminator contrastive loss."""
-    def __init__(self):
-        super(DiscLoss, self).__init__()
-        self.criterion = nn.BCELoss()
-    
-    def forward(self, prob, prob_global, labels, labels_global):
-        scores = prob.unsqueeze(1) * prob_global.unsqueeze(0)
-        scores = scores.sum(dim=2).view(prob.shape[0] * prob_global.shape[0]).float()
-        targets = (labels.unsqueeze(1) == (labels_global.unsqueeze(0))).view(labels.shape[0] * labels_global.shape[0]).float()
-        return self.criterion(scores, targets)
     
     
     

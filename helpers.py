@@ -187,8 +187,8 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False
         
         train_input = train_input.narrow(0, 0, n_tr)
         train_target = train_target.narrow(0, 0, n_tr)
-        test_input = test_input.narrow(0, 0, n_te)
-        test_target = test_target.narrow(0, 0, n_te)
+        #test_input = test_input.narrow(0, 0, n_te)
+        #test_target = test_target.narrow(0, 0, n_te)
     
     # Print dataset information
     memory_train = (train_input.element_size() * train_input.nelement() + train_target.element_size() * train_target.nelement())/ 1e6
@@ -699,7 +699,7 @@ def plot_global_training_history(perf_trackers, metric, which=None, shaded=True,
         which = [which]
     
     # Figure creation
-    fig, ax = plt.subplots(1, 1, figsize=(4, 4))    
+    fig, ax = plt.subplots(1, 1, figsize=(3, 3))    
     
     if shaded:
         x = perf_trackers[0].index
@@ -733,7 +733,7 @@ def plot_global_training_history(perf_trackers, metric, which=None, shaded=True,
         ax.set_yscale('log')
     
     if metric == "accuracy":
-        ax.set_ylim(0, 1)
+        ax.set_ylim(0.2, 1)
     
     if title is not None:
         ax.set_title(title)
@@ -807,12 +807,13 @@ class OutputTracker():
         self.buffers_targets.append(buffer_targets)
 
     
-    def get_global_outputs(self, r=-1, n_avg=None):
+    def get_global_outputs(self, r=-1, n_avg=None, client_id=None):
         """Return the global aggregated output at the given round.
         
         Arguments:
             - r: Round.
             - n_avg: Number of samples to consider for the average (all if 0 or None).
+            - client_id: Consider only the data of client_id if given.
         Return:
             - Global averaged outputs.
         """
@@ -822,8 +823,15 @@ class OutputTracker():
         
         # Extract data
         global_outputs = torch.empty(self.meta["n_class"], self.dim)
-        outputs = self.buffers_outputs[r]
-        targets = self.buffers_targets[r]
+        
+        if client_id is None:
+            outputs = self.buffers_outputs[r]
+            targets = self.buffers_targets[r]
+        else:
+            if client_id == "random":
+                client_id = random.randint(0, self.n_clients-1)
+            outputs = self.buffers_outputs[r][self.idx[client_id]]
+            targets = self.buffers_targets[r][self.idx[client_id]]
         
         for c in range(self.meta["n_class"]):
             if torch.any(targets == c).item():
@@ -910,7 +918,7 @@ def compare(pt, pt_baseline, metric="accuracy", r=-1, which=None):
     
     return diff_dict
     
-    
+
     
     
     

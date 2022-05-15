@@ -14,6 +14,7 @@ import torch
 import torch.nn as nn
 import helpers as hlp
 import models as mdl
+import matplotlib.pyplot as plt
 import json
 
 
@@ -51,7 +52,7 @@ def get_args():
 def run(n_clients, dataset, model, alpha="uniform", rounds=100, 
         batch_size=32, epoch_per_round=1, lr=1e-3, optimizer="adam", feature_dim=100,
         n_avg=None, lambda_kd=1.0, lambda_disc=1.0, kd_type="feature", sizes=None, reduced=False, 
-        track_history=1, fed_avg=False, export_dir=None, data_dir="./data",
+        track_history=1, fed_avg=False, export_dir=None, data_dir="./data", disc_method="classifier",
         device=None, preset=None, seed=0):
     
     """Run an experiment of PrivateKD.
@@ -66,7 +67,6 @@ def run(n_clients, dataset, model, alpha="uniform", rounds=100,
     if preset is not None:
         if preset in ["fl", "FL", "fedavg", "FedAvg"]:
             print("Running FL with {} clients".format(n_clients))
-            n_avg = None
             lambda_kd=0
             lambda_disc=0
             fed_avg = "model"
@@ -157,22 +157,13 @@ def run(n_clients, dataset, model, alpha="uniform", rounds=100,
     # Performance tracker
     if fed_avg == "model":
         perf_trackers = [hlp.PerfTracker(global_model, 
-                                         {"Train": train_dl_list[i], "Validation": val_dl_list[i], "Train (global)": global_train_dl, "Validation (global)": global_val_dl}, 
+                                         {"Train": train_dl_list[i], "Validation": val_dl_list[i], "Validation (global)": global_val_dl}, 
                                          criterion, meta["n_class"], ID="Client {}".format(i)) for i in range(n_clients)]
         
     else:
         perf_trackers = [hlp.PerfTracker(client_models[i], 
-                                         {"Train": train_dl_list[i], "Validation": val_dl_list[i], "Train (global)": global_train_dl, "Validation (global)": global_val_dl}, 
+                                         {"Train": train_dl_list[i], "Validation": val_dl_list[i], "Validation (global)": global_val_dl}, 
                                          criterion, meta["n_class"], ID="Client {}".format(i)) for i in range(n_clients)]
-            
-    
-    # Optimizers
-    if optimizer in ["adam", "Adam", "ADAM"]:
-        optimizers = [torch.optim.Adam(m.parameters(), lr=lr) for m in client_models]
-    elif optimizer in ["sgd", "Sgd", "SGD"]:
-        optimizers = [torch.optim.SGD(m.parameters(), lr=lr) for m in client_models] 
-    else:
-        raise ValueError("Optimizer unknown.")
         
     # Feature tracker and discriminator
     if kd_type == "feature":
@@ -181,7 +172,25 @@ def run(n_clients, dataset, model, alpha="uniform", rounds=100,
         tracker = hlp.OutputTracker(client_models, train_dl_list, meta["n_class"], meta)
     
     if lambda_disc > 0:
-        discriminators = [mdl.Discriminator("prob_product", client_models[i].classifier) for i in range(n_clients)]
+        if disc_method == "classifier":
+            discriminators = [mdl.Discriminator("prob_product", client_models[i].classifier) for i in range(n_clients)]
+        elif disc_method == "seperate":
+            discriminators = [mdl.Discriminator("exponential_prob", feat_dim=feature_dim, n_class=meta["n_class"]).to(device) for i in range(n_clients)]
+
+    # Optimizers
+    # Adam
+    if optimizer in ["adam", "Adam", "ADAM"]:
+        optimizers = [torch.optim.Adam(m.parameters(), lr=lr) for m in client_models]
+        if disc_method == "seperate" and lambda_disc > 0:
+            optimizers_disc = [torch.optim.Adam(disc.parameters(), lr=lr) for disc in discriminators]
+    
+    # SGD
+    elif optimizer in ["sgd", "Sgd", "SGD"]:
+        optimizers = [torch.optim.SGD(m.parameters(), lr=lr) for m in client_models] 
+        if disc_method == "seperate" and lambda_disc > 0:
+            optimizers_disc = [torch.optim.SGD(disc.parameters(), lr=lr) for disc in discriminators] 
+    else:
+        raise ValueError("Optimizer unknown.")
     
     #Each client updates its model locally on its own dataset (Standard)
     for r in range(rounds):
@@ -194,37 +203,43 @@ def run(n_clients, dataset, model, alpha="uniform", rounds=100,
             opt = optimizers[client_id]
             if lambda_disc > 0:
                 disc = discriminators[client_id]
+                if disc_method == "seperate":
+                    opt_disc = optimizers_disc[client_id]
             
             #Local update
             for e in range(epoch_per_round):
                 for inputs, targets in train_dl_list[client_id]:
                     # Reset gradient
                     opt.zero_grad()
+                    if disc_method == "seperate" and lambda_disc > 0:
+                        opt_disc.zero_grad()
                     
-                    # Local representation
+                    # Local forward pass
                     features = model.features(inputs)
                     logits = model.classifier(features)
-
                         
                     # Optimization step
                     loss = criterion(logits, targets)
                     if lambda_kd > 0:
                         # Compute estimated probabilities
-                        teacher_data = tracker.get_global_outputs().to(device)
                         if kd_type == "feature":
+                            teacher_data = tracker.get_global_outputs(n_avg=None, client_id=None).to(device)
                             loss += lambda_kd * criterion_kd(features, teacher_data[targets])
                         elif kd_type == "output":
+                            teacher_data = tracker.get_global_outputs(n_avg=None, client_id=None).to(device)
                             loss += lambda_kd * criterion_kd(logits, teacher_data[targets])
                     if lambda_disc > 0:
-                        teacher_data_rand = tracker.get_global_outputs(n_avg=n_avg).to(device)
+                        teacher_data = tracker.get_global_outputs(n_avg=n_avg, client_id="random").to(device)
                         targets_global = torch.arange(meta["n_class"]).to(device)
-                        scores, disc_targets = disc(features, teacher_data_rand, targets, targets_global)
+                        scores, disc_targets = disc(features, teacher_data, targets, targets_global)
                         loss += lambda_disc * criterion_disc(scores, disc_targets)
                     
                     # Optimization step
                     loss.backward()
                     opt.step()
-            
+                    if disc_method == "seperate" and lambda_disc > 0:
+                        opt_disc.step()
+        
         # Use FedAvg on the classifer
         if fed_avg == "classifier":
             # Aggregation (weighted average)
@@ -263,13 +278,22 @@ def run(n_clients, dataset, model, alpha="uniform", rounds=100,
         print("\rRound {} done. ({:.1f}s)".format(r+1, t1-t0), end=6*" ")  
     
     
-    # Plot training history and return
-    print("\nDone.")
+    # Evalutate models (averaging performance)
+    tr_loss = np.array([pt.perf_histories["Train"]["loss"][-1] for pt in perf_trackers]).mean()
+    val_loss = np.array([pt.perf_histories["Validation (global)"]["loss"][-1] for pt in perf_trackers]).mean()
+    tr_acc = np.array([pt.perf_histories["Train"]["accuracy"][-1] for pt in perf_trackers]).mean()
+    val_acc = np.array([pt.perf_histories["Validation (global)"]["accuracy"][-1] for pt in perf_trackers]).mean()
+    print("\nFinal average performance:")
+    print("Train loss: {:.2f} | Validation (global) loss: {:.2f}".format(tr_loss, val_loss))
+    print("Train acc: {:.2f}% | Validation (global) acc: {:.2f}%".format(100*tr_acc, 100*val_acc))
+    
+    # Saving plots if necessary
     hlp.plot_global_training_history(perf_trackers, metric="accuracy", title="Training history: Accuracy",
                                      savepath=os.path.join(fig_directory, "accuracy_history.png") if export_dir is not None else None)
     hlp.plot_global_training_history(perf_trackers, metric="loss", title="Training history: Loss",
                                      savepath=os.path.join(fig_directory, "loss_history.png") if export_dir is not None else None)
-    return perf_trackers
+    plt.close("all")
+    return perf_trackers, tracker
 
 def benchmark(n_clients, dataset, model, alpha="uniform", rounds=100, 
               batch_size=32, epoch_per_round=1, lr=1e-3, optimizer="adam", feature_dim=100, 
@@ -281,23 +305,23 @@ def benchmark(n_clients, dataset, model, alpha="uniform", rounds=100,
     print(40 * "*")
     print("Starting benchmark")
     print(40 * "*")
-    pt_cfkd = run(n_clients=n_clients, dataset=dataset, model=model, alpha=alpha, rounds=rounds, 
+    pt_cfkd, _ = run(n_clients=n_clients, dataset=dataset, model=model, alpha=alpha, rounds=rounds, 
                   batch_size=batch_size, epoch_per_round=epoch_per_round, lr=lr, optimizer=optimizer, 
                   feature_dim=feature_dim, n_avg=n_avg, lambda_kd=lambda_kd, lambda_disc=lambda_disc, 
                   sizes=sizes, fed_avg=fed_avg, reduced=reduced, track_history=track_history, 
                   export_dir=export_dir, data_dir=data_dir, device=device, seed=seed)
     print(20 * "*")
-    pt_fl = run(n_clients=n_clients, dataset=dataset, model=model, alpha=alpha, rounds=rounds, 
+    pt_fl, _ = run(n_clients=n_clients, dataset=dataset, model=model, alpha=alpha, rounds=rounds, 
                 batch_size=batch_size, epoch_per_round=epoch_per_round, lr=lr, optimizer=optimizer, 
                 feature_dim=feature_dim, sizes=sizes, reduced=reduced, track_history=track_history,
                 export_dir=export_dir, data_dir=data_dir, device=device, preset="fl", seed=seed)
     print(20 * "*")
-    pt_fd = run(n_clients=n_clients, dataset=dataset, model=model, alpha=alpha, rounds=rounds, 
+    pt_fd, _ = run(n_clients=n_clients, dataset=dataset, model=model, alpha=alpha, rounds=rounds, 
                 batch_size=batch_size, epoch_per_round=epoch_per_round, lr=lr, optimizer=optimizer, 
                 feature_dim=feature_dim, lambda_kd=lambda_kd, sizes=sizes, reduced=reduced, track_history=track_history,
                 export_dir=export_dir, data_dir=data_dir, device=device, preset="fd", seed=seed)
     print(20 * "*")
-    pt_il = run(n_clients=n_clients, dataset=dataset, model=model, alpha=alpha, rounds=rounds, 
+    pt_il, _ = run(n_clients=n_clients, dataset=dataset, model=model, alpha=alpha, rounds=rounds, 
                 batch_size=batch_size, epoch_per_round=epoch_per_round, lr=lr, optimizer=optimizer, 
                 feature_dim=feature_dim, sizes=sizes, reduced=reduced, track_history=track_history, 
                 export_dir=export_dir, data_dir=data_dir, device=device, preset="il", seed=seed)
