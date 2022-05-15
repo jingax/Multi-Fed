@@ -24,11 +24,11 @@ def get_model(model, feat_dim, meta):
     """
     
     if model == "LeNet5":
-        return LeNet5(in_channels=meta["in_dimension"][0], feat_dim=feat_dim, output_shape=meta["n_class"], dropout=0)
+        return LeNet5(in_channels=meta["in_dimension"][0], feat_dim=feat_dim, output_shape=meta["n_class"])
     if model == "ResNet9":
-        return ResNet9(in_channels=meta["in_dimension"][0], feat_dim=feat_dim, output_shape=meta["n_class"], dropout=0)
+        return ResNet9(in_channels=meta["in_dimension"][0], feat_dim=feat_dim, output_shape=meta["n_class"])
     if model == "ResNet18":
-        return ResNet18(in_channels=meta["in_dimension"][0], feat_dim=feat_dim, output_shape=meta["n_class"], dropout=0)
+        return ResNet18(in_channels=meta["in_dimension"][0], feat_dim=feat_dim, output_shape=meta["n_class"])
 
 class L2Norm(nn.Module):
     """
@@ -119,38 +119,7 @@ class LeNet5(nn.Module):
         x = self.classifier(x)
         return x
     
-class LeNet5(nn.Module):
-    def __init__(self, in_channels, feat_dim, output_shape, dropout=0.25):
-        """Create a personalized model base on the LeNet5 model archtecture.
-    
-        Arguments:
-            -in_channels: Number of input channels
-            -output_shape: Number of class (for the output dimention)
-            -dropout_rate: Percentage of neurons to drop.
-        """
-        super(LeNet5, self).__init__()
-        self.features = nn.Sequential(nn.Conv2d(in_channels = in_channels, out_channels=6, kernel_size=5, stride=1, padding=2),
-                                      nn.ReLU(),
-                                      nn.MaxPool2d(kernel_size=2, stride=2),
-                                      nn.Dropout2d(dropout),
-                                      nn.Conv2d(in_channels=6, out_channels=16, kernel_size=5, stride=1, padding=2),
-                                      nn.ReLU(),
-                                      nn.MaxPool2d(kernel_size=2, stride=2),
-                                      nn.Dropout2d(dropout),
-                                      nn.Conv2d(in_channels=16, out_channels=120, kernel_size=3, stride=1, padding=1),
-                                      nn.ReLU(),
-                                      nn.AdaptiveAvgPool2d(output_size=(1, 1)),
-                                      nn.Flatten(start_dim=1),
-                                      nn.Linear(120, feat_dim),
-                                      nn.Tanh(),
-                                      nn.Dropout(dropout))
-        self.classifier = nn.Linear(feat_dim, output_shape)
 
-
-    def forward(self, x):
-        x = self.features(x)
-        x = self.classifier(x)
-        return x
 
 
 class AlexNet(nn.Module):
@@ -230,7 +199,7 @@ class ResNet9(nn.Module):
     """
     Residual network with 9 layers.
     """
-    def __init__(self, in_channels, feat_dim, output_shape, dropout=0.25):
+    def __init__(self, in_channels, feat_dim, output_shape, dropout=0):
         super(ResNet9, self).__init__()
 
         self.features = nn.Sequential(
@@ -270,7 +239,7 @@ class ResNet18(nn.Module):
     """
     Residual network with 18 layers.
     """
-    def __init__(self, in_channels, feat_dim, output_shape, dropout=0.25):
+    def __init__(self, in_channels, feat_dim, output_shape, dropout=0):
         super(ResNet18, self).__init__()
 
         self.features = nn.Sequential(

@@ -311,11 +311,6 @@ def benchmark(n_clients, dataset, model, alpha="uniform", rounds=100,
                   sizes=sizes, fed_avg=fed_avg, reduced=reduced, track_history=track_history, 
                   export_dir=export_dir, data_dir=data_dir, device=device, seed=seed)
     print(20 * "*")
-    pt_fl, _ = run(n_clients=n_clients, dataset=dataset, model=model, alpha=alpha, rounds=rounds, 
-                batch_size=batch_size, epoch_per_round=epoch_per_round, lr=lr, optimizer=optimizer, 
-                feature_dim=feature_dim, sizes=sizes, reduced=reduced, track_history=track_history,
-                export_dir=export_dir, data_dir=data_dir, device=device, preset="fl", seed=seed)
-    print(20 * "*")
     pt_fd, _ = run(n_clients=n_clients, dataset=dataset, model=model, alpha=alpha, rounds=rounds, 
                 batch_size=batch_size, epoch_per_round=epoch_per_round, lr=lr, optimizer=optimizer, 
                 feature_dim=feature_dim, lambda_kd=lambda_kd, sizes=sizes, reduced=reduced, track_history=track_history,
@@ -325,6 +320,13 @@ def benchmark(n_clients, dataset, model, alpha="uniform", rounds=100,
                 batch_size=batch_size, epoch_per_round=epoch_per_round, lr=lr, optimizer=optimizer, 
                 feature_dim=feature_dim, sizes=sizes, reduced=reduced, track_history=track_history, 
                 export_dir=export_dir, data_dir=data_dir, device=device, preset="il", seed=seed)
+    print(20 * "*")
+    pt_fl, _ = run(n_clients=n_clients, dataset=dataset, model=model, alpha=alpha, rounds=rounds, 
+                batch_size=batch_size, epoch_per_round=epoch_per_round, lr=lr, optimizer=optimizer, 
+                feature_dim=feature_dim, sizes=sizes, reduced=reduced, track_history=track_history,
+                export_dir=export_dir, data_dir=data_dir, device=device, preset="fl", seed=seed)
+
+
     
     print("Benchmark done.")
     return pt_cfkd, pt_fl, pt_fd, pt_il
