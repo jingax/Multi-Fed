@@ -28,6 +28,7 @@ import torchvision
 from torchvision import datasets
 
 # Visualization
+import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -727,7 +728,7 @@ def plot_global_training_history(perf_trackers, metric, which=None, shaded=True,
     # Ax properties
     ax.grid(True, which="both")
     ax.set_ylabel(metric)
-    
+    ax.set_xlabel("round")
     # Parameters
     if logscale:
         ax.set_yscale('log')
@@ -861,7 +862,7 @@ class OutputTracker():
         
     def plot_variance_heatmap(self, r=-1):
         """WIP"""
-        fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
         std = np.zeros((self.meta["n_class"], self.meta["n_class"]))  
         for c1 in range(self.meta["n_class"]):
             for c2 in range(self.meta["n_class"]):
@@ -869,16 +870,38 @@ class OutputTracker():
                 std[c1, c2] = np.array(dist).std()
         sns.heatmap(std, cmap="Blues", annot=False, ax=ax, cbar=False, annot_kws={"fontsize":"small"}, vmin=0.0, vmax=0.2)
     
-    def plot_tSNE(self, p=30):
+    def plot_tSNE(self, r_list=[-1], p=30, single_client=None, savepath=None, title=None, fig_axs=None):
         """Plot the t-SNE dimension reduction of the averaged output."""
-        embedder = TSNE(n_components=2, init='random', perplexity=p)
-        feat_emb = embedder.fit_transform(self.buffers_outputs[-1])
+        if fig_axs is None:
+            fig, axs = plt.subplots(1, len(r_list), figsize=(3*len(r_list), 3))
+            plt.subplots_adjust(wspace=0)
+        else:
+            fig, axs = fig_axs
+        cmap_list = ["Oranges", "Blues"]
+        norm = matplotlib.colors.NoNorm()
+        for i, r in enumerate(r_list):
+            embedder = TSNE(n_components=2, init='random', perplexity=p)
+            axs[i].tick_params(left = False, right = False , labelleft = False ,labelbottom = False, bottom = False)
+            if fig_axs is None:
+                axs[i].set_title("Round {}".format(r))
+            if single_client is None:
+                feat_emb = embedder.fit_transform(self.buffers_outputs[r])
+                for client_id in range(self.n_clients):
+                    colors = 0.2 + 0.8 * self.buffers_targets[r][self.idx[client_id]] / (self.meta["n_class"]-1)
+                    axs[i].scatter(feat_emb[self.idx[client_id],0], feat_emb[self.idx[client_id],1], 
+                                   c=colors, norm=norm, s=1, marker="o", lw=1, cmap=cmap_list[client_id])
         
-        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-        ax.scatter(feat_emb[:,0], feat_emb[:,1], c=self.buffers_targets[-1], s=10, cmap="tab10")
-
+            else:
+                feat_emb = embedder.fit_transform(self.buffers_outputs[r][self.idx[single_client]])
+                colors = 0.2 + 0.8 * self.buffers_targets[r][self.idx[single_client]] / (self.meta["n_class"]-1)
+                axs[i].scatter(feat_emb[:,0], feat_emb[:,1], 
+                                   c=colors, norm=norm, s=1, marker="o", lw=1, cmap=cmap_list[single_client])
+        if title is not None:
+            axs[0].set_ylabel(title)
+        # Save the figure at given location
+        if savepath is not None:
+            fig.savefig(savepath, bbox_inches='tight')
             
-
 def model_size(model):
     """Compute the memory size (MB) of the given model (parameters + buffers).
     

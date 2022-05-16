@@ -81,8 +81,13 @@ def run(n_clients, dataset, model, alpha="uniform", rounds=100,
             lambda_kd=0
             lambda_disc=0
             fed_avg = False
+        elif preset in ["CL", "cl"]:
+            print("Running centralized learning".format(n_clients))
+            n_clients = 1
+            lambda_kd = 0
+            lambda_disc = 0
         else:
-            raise ValueError("Unknown preset {} (FL, FD or IL).".format(preset))
+            raise ValueError("Unknown preset {} (FL, FD, IL or CL).".format(preset))
     else:
         print("Running CFKD with {} clients".format(n_clients))
     
