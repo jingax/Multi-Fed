@@ -908,8 +908,10 @@ def model_size(model):
     Arguments:
         - model: Model to analyse.
     """
+    n_params = sum([param.nelement() for param in model.parameters()])
     mem_params = sum([param.nelement()*param.element_size() for param in model.parameters()])
     mem_bufs = sum([buf.nelement()*buf.element_size() for buf in model.buffers()])
+    print("Number of parameter: {}".format(n_params))
     print("Model size: {} MB".format((mem_params + mem_bufs)/1e6))
     
 

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------
 # This file contains the experiments code that was developped
 # during my master thesis at MIT.
@@ -208,8 +209,10 @@ def run(n_clients, dataset, model, alpha="uniform", rounds=100,
             opt = optimizers[client_id]
             if lambda_disc > 0:
                 disc = discriminators[client_id]
+                teacher_data_disc = tracker.get_global_outputs(n_avg=n_avg, client_id="random").to(device)
                 if disc_method == "seperate":
                     opt_disc = optimizers_disc[client_id]
+                
             
             #Local update
             for e in range(epoch_per_round):
@@ -234,9 +237,8 @@ def run(n_clients, dataset, model, alpha="uniform", rounds=100,
                             teacher_data = tracker.get_global_outputs(n_avg=None, client_id=None).to(device)
                             loss += lambda_kd * criterion_kd(logits, teacher_data[targets])
                     if lambda_disc > 0:
-                        teacher_data = tracker.get_global_outputs(n_avg=n_avg, client_id="random").to(device)
                         targets_global = torch.arange(meta["n_class"]).to(device)
-                        scores, disc_targets = disc(features, teacher_data, targets, targets_global)
+                        scores, disc_targets = disc(features, teacher_data_disc, targets, targets_global)
                         loss += lambda_disc * criterion_disc(scores, disc_targets)
                     
                     # Optimization step
@@ -335,7 +337,7 @@ def benchmark(n_clients, dataset, model, alpha="uniform", rounds=100,
     
     print("Benchmark done.")
     return pt_cfkd, pt_fl, pt_fd, pt_il
-    
+
 if __name__ == "__main__":
     # Parse arguments
     args = get_args()
