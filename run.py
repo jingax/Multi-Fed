@@ -1,11 +1,3 @@
-# -----------------------------------------------------------------------------
-# This file contains the experiments code that was developped
-# during my master thesis at MIT.
-#
-# 2022 Frédéric Berdoz, Boston, USA
-# -----------------------------------------------------------------------------
-
-
 import argparse
 import os
 import time
@@ -21,44 +13,67 @@ import json
 def get_args():
     """Argument parser."""
     parser = argparse.ArgumentParser()
-    parser.add_argument('--n_clients', type=int, default=2, help="")
-    parser.add_argument('--task', type=str, default='MNIST', help="")
-    parser.add_argument('--model', type=str, default='LeNet5', help="")
-    parser.add_argument('--alpha', type=float, default=1e15, help="")
-    parser.add_argument('--rounds', type=int, default=100,  help="")
-    parser.add_argument('--batch_size', type=int, default=32, help="")
-    parser.add_argument('--epoch_per_round', type=int, default=1, help="")
-    parser.add_argument('--lr', type=float, default=1e-3,  help="")
-    parser.add_argument('--optimizer', type=str, default="adam",  help="")
-    parser.add_argument('--feature_dim', type=int, default=100, help="")
-    parser.add_argument('--n_avg', type=int, default=None, help="")
-    parser.add_argument('--lambda_kd', type=float,default=1.0, help="")
-    parser.add_argument('--lambda_disc', type=float,default=1.0, help="")
-    parser.add_argument('--kd_type', type=str, default="feature",  help="")
-    parser.add_argument('--sizes',type=float, nargs='*', default=None, help="")
-    parser.add_argument('--reduced', type=float, default=1.0, help="")
-    parser.add_argument('--track_history', type=int, default=1, help="")
-    parser.add_argument('--fed_avg', type=str, default=False,  help="")
-    parser.add_argument('--export_dir', type=str, default="./saves", help="")
-    parser.add_argument('--data_dir', type=str, default="./data", help="")
-    parser.add_argument('--config_file', type=str, default=None, help="")
-    parser.add_argument('--device', type=str, default=None, help="")
-    parser.add_argument('--preset', type=str, default=None, help="")
-    parser.add_argument('--seed', type=int, default=0, help="")
+    parser.add_argument('--n_clients', type=int, default=2, help="Number of clients")
+    parser.add_argument('--dataset', type=str, default='MNIST', help="Classification dataset")
+    parser.add_argument('--model', type=str, default='LeNet5', help="Model architecture")
+    parser.add_argument('--alpha', type=float, default=1e15, help="Concentration parameter for data split")
+    parser.add_argument('--rounds', type=int, default=100,  help="Number of communication rounds")
+    parser.add_argument('--batch_size', type=int, default=32, help="Mini-batch size")
+    parser.add_argument('--epoch_per_round', type=int, default=1, help="Number of epoch per communication round")
+    parser.add_argument('--lr', type=float, default=1e-3,  help="Learning rate")
+    parser.add_argument('--optimizer', type=str, default="adam",  help="Optimizer type")
+    parser.add_argument('--feature_dim', type=int, default=100, help="Number of feature")
+    parser.add_argument('--n_avg', type=int, default=10, help="Number of considered samples for the averaging")
+    parser.add_argument('--lambda_kd', type=float,default=10, help="Meta parameter for feature-based KD")
+    parser.add_argument('--lambda_disc', type=float,default=1.0, help="Meta parameter for contrastive lost")
+    parser.add_argument('--kd_type', type=str, default="feature",  help="Type of KD (feature or output)")
+    parser.add_argument('--sizes',type=float, nargs='*', default=None, help="Dataset sizes")
+    parser.add_argument('--reduced', type=float, default=1.0, help="Reduction parameter for the train dataset")
+    parser.add_argument('--track_history', type=int, default=1, help="Intervall beween validation evaluation during training")
+    parser.add_argument('--fed_avg', type=str, default=False,  help="Use federated averaging for model/classifier/nothing")
+    parser.add_argument('--export_dir', type=str, default="./saves", help="Folder to save plots/configuration/etc.")
+    parser.add_argument('--data_dir', type=str, default="./data", help="Folder to load/download the data")
+    parser.add_argument('--config_file', type=str, default=None, help="Configuration (json) file to reproduce a certain experiment")
+    parser.add_argument('--device', type=str, default=None, help="Device to use for learning")
+    parser.add_argument('--preset', type=str, default=None, help="Learning preset (fl, fd, il or cl)")
+    parser.add_argument('--seed', type=int, default=0, help="Seed for reproductability")
     args = parser.parse_args()
     return args
 
 
-def run(n_clients, dataset, model, alpha="uniform", rounds=100, 
+def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=100, 
         batch_size=32, epoch_per_round=1, lr=1e-3, optimizer="adam", feature_dim=100,
         n_avg=None, lambda_kd=1.0, lambda_disc=1.0, kd_type="feature", sizes=None, reduced=False, 
         track_history=1, fed_avg=False, export_dir=None, data_dir="./data", disc_method="classifier",
         device=None, preset=None, seed=0):
-    
-    """Run an experiment of PrivateKD.
+    """Run an experiment.
     
     Arguments:
-    
+        -n_clients: Number of clients
+        -dataset: Classification dataset
+        -model: Model architecture
+        -alpha: Concentration parameter for data split
+        -rounds: Number of communication rounds
+        -batch_size: Mini-batch size
+        -epoch_per_round: Number of epoch per communication round
+        -lr: Learning rate
+        -optimizer: Optimizer type
+        -feature_dim: Number of feature
+        -n_avg: Number of considered samples for the averaging
+        -lambda_kd: Meta parameter for feature-based KD
+        -lambda_disc: Meta parameter for contrastive lost
+        -kd_type: "Type of KD (feature or output)
+        -sizes: Dataset sizes
+        -reduced: Reduction parameter for the train dataset
+        -track_history: Intervall beween validation evaluation during training
+        -fed_avg: Use federated averaging for model/classifier/nothing
+        -export_dir: Folder to save plots/configuration/etc.
+        -data_dir: Folder to load/download the data
+        -disc_method: Method for the classifier (classifier or seperate)
+        -config_file: Configuration (json) file to reproduce a certain experiment
+        -device: Device to use for learning
+        -preset: Learning preset (fl, fd, il or cl)
+        -seed: Seed for reproductability
     Return:
         - perf_trackers: A list of all the performance trackers
         - feature_trackers: The feature trackers.
@@ -208,8 +223,10 @@ def run(n_clients, dataset, model, alpha="uniform", rounds=100,
             opt = optimizers[client_id]
             if lambda_disc > 0:
                 disc = discriminators[client_id]
+                teacher_data_disc = tracker.get_global_outputs(n_avg=n_avg, client_id="random").to(device)
                 if disc_method == "seperate":
                     opt_disc = optimizers_disc[client_id]
+                
             
             #Local update
             for e in range(epoch_per_round):
@@ -234,9 +251,8 @@ def run(n_clients, dataset, model, alpha="uniform", rounds=100,
                             teacher_data = tracker.get_global_outputs(n_avg=None, client_id=None).to(device)
                             loss += lambda_kd * criterion_kd(logits, teacher_data[targets])
                     if lambda_disc > 0:
-                        teacher_data = tracker.get_global_outputs(n_avg=n_avg, client_id="random").to(device)
                         targets_global = torch.arange(meta["n_class"]).to(device)
-                        scores, disc_targets = disc(features, teacher_data, targets, targets_global)
+                        scores, disc_targets = disc(features, teacher_data_disc, targets, targets_global)
                         loss += lambda_disc * criterion_disc(scores, disc_targets)
                     
                     # Optimization step
@@ -289,8 +305,8 @@ def run(n_clients, dataset, model, alpha="uniform", rounds=100,
     tr_acc = np.array([pt.perf_histories["Train"]["accuracy"][-1] for pt in perf_trackers]).mean()
     val_acc = np.array([pt.perf_histories["Validation (global)"]["accuracy"][-1] for pt in perf_trackers]).mean()
     print("\nFinal average performance:")
-    print("Train loss: {:.2f} | Validation (global) loss: {:.2f}".format(tr_loss, val_loss))
-    print("Train acc: {:.2f}% | Validation (global) acc: {:.2f}%".format(100*tr_acc, 100*val_acc))
+    print("\t- Train loss: {:.2f} | Validation (global) loss: {:.2f}".format(tr_loss, val_loss))
+    print("\t- Train acc: {:.2f}% | Validation (global) acc: {:.2f}%".format(100*tr_acc, 100*val_acc))
     
     # Saving plots if necessary
     hlp.plot_global_training_history(perf_trackers, metric="accuracy", title="Training history: Accuracy",
@@ -305,12 +321,41 @@ def benchmark(n_clients, dataset, model, alpha="uniform", rounds=100,
               n_avg=None, fed_avg=None, lambda_kd=1.0, lambda_disc=1.0, sizes=None, reduced=False, 
               track_history=1, export_dir=None, data_dir="./data",
               device=None, seed=0):
-    """Benchmark privateKD with FedAvg, FD and independent learning."""
+    """Run an becnhmark (against fl, fd and il).
+    
+    Arguments:
+        -n_clients: Number of clients
+        -dataset: Classification dataset
+        -model: Model architecture
+        -alpha: Concentration parameter for data split
+        -rounds: Number of communication rounds
+        -batch_size: Mini-batch size
+        -epoch_per_round: Number of epoch per communication round
+        -lr: Learning rate
+        -optimizer: Optimizer type
+        -feature_dim: Number of feature
+        -n_avg: Number of considered samples for the averaging
+        -fed_avg: Use federated averaging for model/classifier/nothing
+        -lambda_kd: Meta parameter for feature-based KD
+        -lambda_disc: Meta parameter for contrastive lost
+        -sizes: Dataset sizes
+        -reduced: Reduction parameter for the train dataset
+        -track_history: Intervall beween validation evaluation during training
+        -export_dir: Folder to save plots/configuration/etc.
+        -data_dir: Folder to load/download the data
+        -device: Device to use for learning
+        -seed: Seed for reproductability
+    Return:
+        - pt: List of performance tracker for base experiment
+        - pt_fl: List of performance tracker for fl
+        - pt_fd: List of performance tracker for fd
+        - pt_il: List of performance tracker for il
+    """
     
     print(40 * "*")
     print("Starting benchmark")
     print(40 * "*")
-    pt_cfkd, _ = run(n_clients=n_clients, dataset=dataset, model=model, alpha=alpha, rounds=rounds, 
+    pt, _ = run(n_clients=n_clients, dataset=dataset, model=model, alpha=alpha, rounds=rounds, 
                   batch_size=batch_size, epoch_per_round=epoch_per_round, lr=lr, optimizer=optimizer, 
                   feature_dim=feature_dim, n_avg=n_avg, lambda_kd=lambda_kd, lambda_disc=lambda_disc, 
                   sizes=sizes, fed_avg=fed_avg, reduced=reduced, track_history=track_history, 
@@ -334,17 +379,25 @@ def benchmark(n_clients, dataset, model, alpha="uniform", rounds=100,
 
     
     print("Benchmark done.")
-    return pt_cfkd, pt_fl, pt_fd, pt_il
-    
+    return pt, pt_fl, pt_fd, pt_il
+
 if __name__ == "__main__":
     # Parse arguments
     args = get_args()
+    args_dict = args.__dict__
     
-    if args.congig_file is not None:
-        f = open(config_file)
+    if args_dict["config_file"] is not None:
+        f = open(args_dict["config_file"])
         config = json.load(f)
         f.close()
+        
+        
+        for key, val in config.items():
+            args_dict[key] = val
+            
+    del args_dict["config_file"]
+    
     
     # Run experiments
-    pt_list, ft = run_privateKD()
+    pt_list, ft = run(**args_dict)
 

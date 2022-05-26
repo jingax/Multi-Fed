@@ -1,22 +1,11 @@
-# -----------------------------------------------------------------------------
-# This file contains the helper code that was developped
-# during my master thesis at MIT.
-#
-# 2022 Frédéric Berdoz, Boston, USA
-# -----------------------------------------------------------------------------
-
 # Miscellaneous
 import os
-from datetime import datetime
-import time
 import random
 
 # Data processing
-import pandas as pd
 import numpy as np
 import scipy
 from sklearn.metrics import confusion_matrix
-from sklearn.metrics.pairwise import euclidean_distances
 from sklearn.manifold import TSNE
 
 # AI
@@ -43,8 +32,7 @@ def set_seed(seed=0):
     np.random.seed(seed)
     random.seed(seed)
 
-def load_data(dataset="MNIST", data_dir="./data", reduced=False
-              , normalize="image-wise", flatten=False, device="cpu"):
+def load_data(dataset="MNIST", data_dir="./data", reduced=False, normalize="image-wise", flatten=False, device="cpu"):
     """Load the specified dataset.
     
     Arguments:
@@ -184,10 +172,10 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False
     
     elif isinstance(reduced, float) and reduced > 0 and reduced < 1.0:
         n_tr = int(reduced * train_input.shape[0])
-        n_te = int(reduced * test_input.shape[0])
-        
         train_input = train_input.narrow(0, 0, n_tr)
         train_target = train_target.narrow(0, 0, n_tr)
+        
+        #n_te = int(reduced * test_input.shape[0])
         #test_input = test_input.narrow(0, 0, n_te)
         #test_target = test_target.narrow(0, 0, n_te)
     
@@ -425,6 +413,8 @@ def visualize_class_dist(ds_list, n_class, title=None, savepath=None):
     Arguments:
         - ds_list: List of datasets.
         - n_class: Number of class.
+        - title: Plot title.
+        - savepath: Path to save the figure (not saved if None).
     """
     
     # Build label distribution table
@@ -470,7 +460,6 @@ def ds_to_dl(datasets, batch_size=None, shuffle=True):
         - shuffle: Wheter to shuffle the dataset after each epoch.
     Return:
         - dl: A torch dataloader (or a list of torch dataloaders).
-    
     """
 
     if isinstance(datasets, list):
@@ -495,8 +484,6 @@ def infer(model, data_loader, form="numpy", normalize=False, classify=False):
     Return:
         - List of predictions and targets.
     """ 
-    # Increase batchsize for increased speed
-    #data_loader = ds_to_dl(data_loader.dataset, batch_size=10*data_loader.batch_size)
     
     # Inference
     model.eval()
@@ -743,32 +730,18 @@ def plot_global_training_history(perf_trackers, metric, which=None, shaded=True,
     if savepath is not None:
         fig.savefig(savepath, bbox_inches='tight')
 
-
-def distance_correlation(X, Y):
-    """Compute the distance correlation between the data X and Y.
-    
-    Arguments:
-        - X: 1st data (samples along dim 0 and features along dim 1).
-        - Y: 2nd data (samples along dim 0 and features along dim 1).
-    Return:
-        - dCorr: The distance correlation between X and Y.
-    """
-    n = X.shape[0]
-    A = euclidean_distances(X, X)
-    B = euclidean_distances(Y, Y)
-    
-    A = A - A.mean(axis=0, keepdims=True) - A.mean(axis=1, keepdims=True) + A.mean()
-    B = B - B.mean(axis=0, keepdims=True) - B.mean(axis=1, keepdims=True) + B.mean()
-    
-    dVarX = np.multiply(A, A).sum() / (n**2)
-    dVarY = np.multiply(B, B).sum() / (n**2)
-    dCov = np.multiply(A, B).sum() / (n**2)
-    dCorr = dCov / np.sqrt(dVarX * dVarY)
-    return dCorr
     
 class OutputTracker():
     """Track the output of each clients for learning/analysis/visualization."""
     def __init__(self, client_models, dl_list, dim, meta):
+        """Constructor.
+        
+        Arguments:
+            - client_models: List of client models.
+            - dl_list: List of dataloader.
+            - dim: Dimension of the the data to track.
+            - meta: Metadata about the dataset.
+        """
         # Models and datasets
         self.client_models = client_models
         self.dl_list = dl_list
@@ -846,32 +819,18 @@ class OutputTracker():
         
         return global_outputs
 
-    
-    def plot_class_distance(self, c1, c2):
-        """Plot the evolution of the distances between classes"""
-        fig, ax = plt.subplots(1, 1, figsize=(4, 4))
-        
-        distances = [[torch.linalg.norm(feat[c1] - feat[c2]) 
-                      for feat in self.average_outputs[i]] for i in range(self.n_clients)]
-        
-        for i, dist in enumerate(distances):
-            ax.plot(dist, label="Client {}".format(i))
-        ax.grid()
-        #ax.legend()
-        ax.set_title("Distanc between {} and {}". format(self.meta["class_names"][c1], self.meta["class_names"][c2]))
-        
-    def plot_variance_heatmap(self, r=-1):
-        """WIP"""
-        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-        std = np.zeros((self.meta["n_class"], self.meta["n_class"]))  
-        for c1 in range(self.meta["n_class"]):
-            for c2 in range(self.meta["n_class"]):
-                dist = [F.cosine_similarity(self.average_outputs[i][r][c1], self.average_outputs[i][r][c2], dim=0) for i in range(self.n_clients)]
-                std[c1, c2] = np.array(dist).std()
-        sns.heatmap(std, cmap="Blues", annot=False, ax=ax, cbar=False, annot_kws={"fontsize":"small"}, vmin=0.0, vmax=0.2)
-    
+
     def plot_tSNE(self, r_list=[-1], p=30, single_client=None, savepath=None, title=None, fig_axs=None):
-        """Plot the t-SNE dimension reduction of the averaged output."""
+        """Plot the t-SNE dimension reduction of the averaged output.
+        
+        Arguments:
+            -r_list: List of rounds where to plot the tSNE.
+            -p: Complexitiy of the tSNE.
+            -single_client: Client for which to plot the tSNE (all clients if None).
+            -savepath: Path where to save the figure (not saved if None).
+            -title: Title of the plot.
+            -fig_axs: (Figure, axs) tuple where to plot the tSNE. Create new tuple if None given.
+        """
         if fig_axs is None:
             fig, axs = plt.subplots(1, len(r_list), figsize=(3*len(r_list), 3))
             plt.subplots_adjust(wspace=0)
