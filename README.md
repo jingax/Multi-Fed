@@ -12,6 +12,7 @@ This repository is organised as follows:
 - `Figures.ipynb`: Jupyter notebook containing all the results presented in the paper (figures + quantitative results).
 - `Exploration.ipynb`: Jupyter notebook containing some additional results presented in the thesis + some exploratory code (figures)
 - `LICENSE`: MIT Licence.
+- `MasterThesis.pdf`: Thesis report.
 - `requirements.txt`: Text file containing the required libraries to run the code.
 - `saves`: Folder where experiments results are saved (by default)
 - `data`: Folder where the data is downloaded/loaded
