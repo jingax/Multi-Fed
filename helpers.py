@@ -39,7 +39,7 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False, normalize="imag
         - dataset: Name of the dataset to load.
         - data_dir: Directory where to store (or load if already stored) the dataset.
         - reduced: Boolean/'small'/'tiny'/float between 0 and 1. Reduce the dataset size.
-        - normalize: Whether to normalize the data ('image-wise', 'channel-wise' or 'sample-wise').
+        - normalize: Whether to normalize the data ('image-wise' or 'channel-wise').
         - flatten: Whether to flatten the data (i.g. for FC nets).
         - device: Device where to ship the data.
         
@@ -59,19 +59,19 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False, normalize="imag
         # Load
         print("** Using CIFAR **")
         print("Load train data...")
-        cifar_train_set = datasets.CIFAR10(data_dir + '/cifar10/', train=True,download=True)
+        train_set = datasets.CIFAR10(data_dir + '/cifar10/', train=True,download=True)
         print("Load validation data...")
-        cifar_test_set = datasets.CIFAR10(data_dir + '/cifar10/', train=False,download=True)
+        test_set = datasets.CIFAR10(data_dir + '/cifar10/', train=False,download=True)
 
         # Process train data
-        train_input = torch.from_numpy(cifar_train_set.data)
-        train_input = train_input.transpose(3, 1).transpose(2, 3).float()
-        train_target = torch.tensor(cifar_train_set.targets, dtype=torch.int64)
+        train_input = torch.from_numpy(train_set.data)
+        train_input = train_input.transpose(3, 1).transpose(2, 3).float() / 255
+        train_target = torch.tensor(train_set.targets, dtype=torch.int64)
         
         # Process validation data
-        test_input = torch.from_numpy(cifar_test_set.data).float()
-        test_input = test_input.transpose(3, 1).transpose(2, 3).float()
-        test_target = torch.tensor(cifar_test_set.targets, dtype=torch.int64)
+        test_input = torch.from_numpy(test_set.data).float()
+        test_input = test_input.transpose(3, 1).transpose(2, 3).float() / 255
+        test_target = torch.tensor(test_set.targets, dtype=torch.int64)
         
         # Update metadata
         meta["n_class"] = 10
@@ -82,19 +82,19 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False, normalize="imag
         # Load
         print("** Using CIFAR **")
         print("Load train data...")
-        cifar_train_set = datasets.CIFAR100(data_dir + '/cifar100/', train=True,download=True)
+        train_set = datasets.CIFAR100(data_dir + '/cifar100/', train=True,download=True)
         print("Load validation data...")
-        cifar_test_set = datasets.CIFAR100(data_dir + '/cifar100/', train=False,download=True)
+        test_set = datasets.CIFAR100(data_dir + '/cifar100/', train=False,download=True)
 
         # Process train data
-        train_input = torch.from_numpy(cifar_train_set.data)
-        train_input = train_input.transpose(3, 1).transpose(2, 3).float()
-        train_target = torch.tensor(cifar_train_set.targets, dtype=torch.int64)
+        train_input = torch.from_numpy(train_set.data)
+        train_input = train_input.transpose(3, 1).transpose(2, 3).float() / 255
+        train_target = torch.tensor(train_set.targets, dtype=torch.int64)
         
         # Process validation data
-        test_input = torch.from_numpy(cifar_test_set.data).float()
-        test_input = test_input.transpose(3, 1).transpose(2, 3).float()
-        test_target = torch.tensor(cifar_test_set.targets, dtype=torch.int64)
+        test_input = torch.from_numpy(test_set.data).float()
+        test_input = test_input.transpose(3, 1).transpose(2, 3).float() / 255
+        test_target = torch.tensor(test_set.targets, dtype=torch.int64)
         
         # Update metadata
         meta["n_class"] = 100
@@ -116,17 +116,17 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False, normalize="imag
     elif dataset == "MNIST":
         print("** Using MNIST **")
         print("Load train data...")
-        mnist_train_set = datasets.MNIST(data_dir, train=True, download=True)
+        train_set = datasets.MNIST(data_dir, train=True, download=True)
         print("Load validation data...")
-        mnist_test_set = datasets.MNIST(data_dir, train=False, download=True)
+        test_set = datasets.MNIST(data_dir, train=False, download=True)
 
         # Process train data
-        train_input = mnist_train_set.data.view(-1, 1, 28, 28).float()
-        train_target = mnist_train_set.targets
+        train_input = train_set.data.view(-1, 1, 28, 28).float()
+        train_target = train_set.targets
         
         # Process validation data
-        test_input = mnist_test_set.data.view(-1, 1, 28, 28).float()
-        test_target = mnist_test_set.targets
+        test_input = test_set.data.view(-1, 1, 28, 28).float()
+        test_target = test_set.targets
         
         # Update metadata
         meta["n_class"] = 10
@@ -135,22 +135,43 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False, normalize="imag
     elif dataset == "FMNIST":
         print("** Using FMNIST **")
         print("Load train data...")
-        mnist_train_set = datasets.FashionMNIST(data_dir, train=True, download=True)
+        train_set = datasets.FashionMNIST(data_dir, train=True, download=True)
         print("Load validation data...")
-        mnist_test_set = datasets.FashionMNIST(data_dir, train=False, download=True)
+        test_set = datasets.FashionMNIST(data_dir, train=False, download=True)
 
         # Process train data
-        train_input = mnist_train_set.data.view(-1, 1, 28, 28).float()
-        train_target = mnist_train_set.targets
+        train_input = train_set.data.view(-1, 1, 28, 28).float()
+        train_target = train_set.targets
         
         # Process validation data
-        test_input = mnist_test_set.data.view(-1, 1, 28, 28).float()
-        test_target = mnist_test_set.targets
+        test_input = test_set.data.view(-1, 1, 28, 28).float()
+        test_target = test_set.targets
         
         # Update metadata
         meta["n_class"] = 10
         meta["class_names"] = ["T-shirt/top", "Trouser", "Pullover", "Dress", 
                                "Coat", "Sandal", "Shirt", "Sneaker", "Bag",  "Ankle boot"]
+    elif dataset == "EMNIST":
+        print("** Using EMNIST **")
+        print("Load train data...")
+        train_set = datasets.EMNIST(data_dir, split="balanced", train=True, download=True)
+        print("Load validation data...")
+        test_set = datasets.EMNIST(data_dir, split="balanced", train=False, download=True)
+
+        # Process train data
+        train_input = train_set.data.view(-1, 1, 28, 28).permute(0, 1, 3, 2).float()
+        train_target = train_set.targets
+        
+        # Process validation data
+        test_input = test_set.data.view(-1, 1, 28, 28).permute(0, 1, 3, 2).float()
+        test_target = test_set.targets
+        
+        # Update metadata
+        meta["n_class"] = 1
+        meta["class_names"] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", 
+                               "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", 
+                               "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "d", 
+                               "e", "f", "g", "h", "n", "q", "r", "t"]
     else:
         raise ValueError("Unknown dataset.")
     
@@ -161,14 +182,14 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False, normalize="imag
     if reduced == "small" or reduced is True:
         train_input = train_input.narrow(0, 0, 2000)
         train_target = train_target.narrow(0, 0, 2000)
-        test_input = test_input.narrow(0, 0, 500)
-        test_target = test_target.narrow(0, 0, 500)
+        test_input = test_input.narrow(0, 0, 1000)
+        test_target = test_target.narrow(0, 0, 1000)
     
     elif reduced == "tiny":
         train_input = train_input.narrow(0, 0, 400)
         train_target = train_target.narrow(0, 0, 400)
-        test_input = test_input.narrow(0, 0, 100)
-        test_target = test_target.narrow(0, 0, 100)
+        test_input = test_input.narrow(0, 0, 200)
+        test_target = test_target.narrow(0, 0, 200)
     
     elif isinstance(reduced, float) and reduced > 0 and reduced < 1.0:
         n_tr = int(reduced * train_input.shape[0])
@@ -187,30 +208,47 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False, normalize="imag
     # Normalization
     if normalize == "channel-wise":
         # Normalize each channels independently
-        dims = [i for i in range(test.dim()) if i != 1]
+        dims = [i for i in range(train_input.dim()) if i != 1]
         mu = train_input.mean(dim=dims, keepdim=True)
-        sig = train_input.std(dim=dims, keepdim=True)
-        train_input.sub_(mu).div_(std)
-        test_input.sub_(mu).div_(std)
-        
+        sig = train_input.std(dim=dims, keepdim=True)   
+    
     elif normalize == "image-wise":
         # Normalize all channels
-        mu, std = train_input.mean(), train_input.std()
-        train_input.sub_(mu).div_(std)
-        test_input.sub_(mu).div_(std)
+        mu = train_input.mean()
+        sig = train_input.std()
 
-    elif normalize == "sample-wise":
-        # Normalize sample by sample
-        dims = [i for i in range(test.dim()) if i != 0]
-        mu = train_input.mean(dim=dims, keepdim=True)
-        sig = train_input.std(dim=dims, keepdim=True)
-        train_input.sub_(mu).div_(std)
-        test_input.sub_(mu).div_(std)
-        
+    else:
+        mu = 0
+        sig = 1
+    
+    # Subtract mean and divide by std
+    train_input.sub_(mu).div_(sig)
+    test_input.sub_(mu).div_(sig)
+    meta["mu"] = mu
+    meta["sig"] = sig
+    
     # Update metadata
     meta["in_dimension"] = train_input.shape[1:]
     
     return train_input.to(device), train_target.to(device), test_input.to(device), test_target.to(device), meta
+
+def visualize_data(data, meta, index=[0], targets=None):
+    """Visualize images in a row.
+    
+    Arguments:
+        - data: input data (N, C, H, W).
+        - meta: meta data.
+        - index: List of images to plot (along first dimension in data.
+        - targets: List of targets (to properly annotate images (optional)
+    """
+    fig, axs  = plt.subplots(1, len(index), figsize=(len(index) * 2, 2), squeeze=False)
+    plt.subplots_adjust(wspace=0, hspace=0)
+    for i, idx in enumerate(index):
+        axs[0,i].imshow(data[idx].mul(meta["sig"]).add(meta["mu"]).permute(1, 2, 0))
+        axs[0,i].axis("off")
+        if targets is not None:
+            y = targets[idx]
+            axs[0,i].set_title(meta["class_names"][y])
 
 class CustomDataset(torch.utils.data.Dataset):
     """Custom dataset wrapper."""
