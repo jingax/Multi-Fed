@@ -1,4 +1,5 @@
 # Custom
+celeb/*
 data/*
 #saves/*
 archives/
@@ -122,6 +123,10 @@ venv.bak/
 
 # Rope project settings
 .ropeproject
+*.jpg
+*.jpeg
+*.pt
+*.zip
 
 # mkdocs documentation
 /site

@@ -151,6 +151,39 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False, normalize="imag
         meta["n_class"] = 10
         meta["class_names"] = ["T-shirt/top", "Trouser", "Pullover", "Dress", 
                                "Coat", "Sandal", "Shirt", "Sneaker", "Bag",  "Ankle boot"]
+
+    
+    elif dataset == "CELEBA":
+        print("** Using CELEBA **")
+        print("Load train data...")
+        corr = 80
+        print("Corr:",corr)
+        train_input = torch.load(f'X_train_{corr}.pt')
+        train_target = torch.load(f'Y_train_{corr}.pt').long()
+        # train_target =  torch.stack((train_target,train_target))
+        # train_target = torch.transpose(train_target,0,1)
+        print("Load validation data...")
+        test_input = torch.load(f'X_val_{corr}.pt')
+        test_target = torch.load(f'Y_val_{corr}.pt').long()
+        # test_target =  torch.stack((test_target,test_target))
+        # test_target = torch.transpose(test_target,0,1)
+        
+        # print(test_target.shape)
+
+        # Process train data
+        # train_input = train_set.data.view(-1, 1, 28, 28).float()
+        # train_target = train_set.targets
+        
+        # # Process validation data
+        # test_input = test_set.data.view(-1, 1, 28, 28).float()
+        # test_target = test_set.targets
+        
+        # Update metadata
+        meta["n_class"] = 2
+        meta["class_names"] = ["0", "1"]
+    
+
+
     elif dataset == "EMNIST":
         print("** Using EMNIST **")
         print("Load train data...")
@@ -421,15 +454,20 @@ def split_dataset(n_clients, train_ds, val_ds, alpha, sizes=None):
 
     train_ds_list = []
     val_ds_list = []
-
+    
     #Spliting the datasets
     for c in range(n_class):
-        index_class_tr = np.random.permutation(np.squeeze(np.where(train_ds.targets.cpu()==c)))
-        index_class_val = np.random.permutation(np.squeeze(np.where(val_ds.targets.cpu()==c)))
+        # index_class_tr = np.random.permutation(np.squeeze(np.where(train_ds.targets.cpu()==c)))
+        # index_class_val = np.random.permutation(np.squeeze(np.where(val_ds.targets.cpu()==c)))
 
         for client_id in range(n_clients):
+            index_class_tr = np.random.permutation(np.squeeze(np.where(train_ds.targets[:,client_id].cpu()==c)))
+            index_class_val = np.random.permutation(np.squeeze(np.where(val_ds.targets[:,client_id].cpu()==c)))
+
             if train_dist[client_id, c] > 0:
                 train_x_list[client_id].append(train_ds.inputs[index_class_tr[:train_dist[client_id, c]]])
+                # print(train_ds.targets.shape)
+                # print(index_class_tr[:train_dist[client_id, c]])
                 train_y_list[client_id].append(train_ds.targets[index_class_tr[:train_dist[client_id, c]]])
                 index_class_tr = index_class_tr[train_dist[client_id, c]:]
             if val_dist[client_id, c] > 0:
@@ -443,6 +481,7 @@ def split_dataset(n_clients, train_ds, val_ds, alpha, sizes=None):
         val_ds_list.append(CustomDataset(torch.cat(val_x_list[client_id], dim=0),
                                             torch.cat(val_y_list[client_id], dim=0)))
 
+    
     return train_ds_list, val_ds_list
 
 def visualize_class_dist(ds_list, n_class, title=None, savepath=None):
@@ -547,7 +586,7 @@ def infer(model, data_loader, form="numpy", normalize=False, classify=False):
     elif form == "torch":
         return predictions, targets
     
-def evaluate_model(model, data_loader, n_class, criterion=None):
+def evaluate_model(model, data_loader, n_class,cid, criterion=None):
     """
     Compute loss and different performance metric of a single model using a data_loader.
     Returns a dictionary.
@@ -565,7 +604,7 @@ def evaluate_model(model, data_loader, n_class, criterion=None):
     
     # Inference
     pred, targets = infer(model, data_loader, form="torch") 
-    
+    targets = targets[:,cid]
     # Compute and store different performance metrics
     if criterion is not None:
         perf["loss"] = criterion(pred, targets).numpy()
@@ -584,7 +623,7 @@ def evaluate_model(model, data_loader, n_class, criterion=None):
     
 class PerfTracker():
     """Track train and validation performace of a given model during training."""
-    def __init__(self, model, dl_dict, criterion, n_class, export_dir=None, ID="N/A"):
+    def __init__(self, model, dl_dict, criterion, n_class, cid, export_dir=None, ID="N/A"):
         """Constructor.
         
         Arguments:
@@ -604,10 +643,11 @@ class PerfTracker():
         self.directory = export_dir
         self.index = [0]
         self.ID = ID
+        self.cid = cid
         
         self.perf_histories = {}
         for key, dl in self.dl_dict.items():
-            perf = evaluate_model(self.model, dl, self.n_class, self.criterion)
+            perf = evaluate_model(self.model, dl, self.n_class,self.cid, self.criterion)
             self.perf_histories[key] = {metric : np.expand_dims(value, 0) for metric, value in perf.items()}
         
         # Creating the directory for exports
@@ -627,7 +667,7 @@ class PerfTracker():
         # Compute performance and add it to the performance histories
         current_perf = {}
         for key, dl in self.dl_dict.items():
-            perf = evaluate_model(self.model, dl, self.n_class, self.criterion)
+            perf = evaluate_model(self.model, dl, self.n_class, self.cid, self.criterion)
             current_perf[key] = perf
             for metric, value in perf.items():
                 self.perf_histories[key][metric] = np.concatenate((self.perf_histories[key][metric], np.expand_dims(value, 0)), axis=0)
@@ -798,7 +838,7 @@ class OutputTracker():
         # Class counts
         self.class_counts = torch.zeros(self.n_clients, self.meta["n_class"]).long()
         for client_id, class_count in enumerate(self.class_counts):
-            val, counts = self.dl_list[client_id].dataset.targets.unique(return_counts=True)
+            val, counts = self.dl_list[client_id].dataset.targets[:,client_id].unique(return_counts=True)
             self.class_counts[client_id, val.cpu()] = counts.cpu()
         
         # Initialization
@@ -808,7 +848,7 @@ class OutputTracker():
         """Compute the outputs for each data sample."""
         # Compute average
         buffer_outputs = torch.empty(sum(self.sizes), self.dim)
-        buffer_targets = torch.empty(sum(self.sizes)).long()
+        buffer_targets = torch.empty(sum(self.sizes),self.n_clients).long()
         for client_id, (model, dl) in enumerate(zip(self.client_models, self.dl_list)):
             outputs, targets = infer(model, dl, form="torch")
             buffer_outputs[self.idx[client_id]] = outputs
@@ -819,7 +859,7 @@ class OutputTracker():
         self.buffers_targets.append(buffer_targets)
 
     
-    def get_global_outputs(self, r=-1, n_avg=None, client_id=None):
+    def get_global_outputs(self,self_id, r=-1, n_avg=None, client_id=None):
         """Return the global aggregated output at the given round.
         
         Arguments:
@@ -835,6 +875,7 @@ class OutputTracker():
         
         # Extract data
         global_outputs = torch.empty(self.meta["n_class"], self.dim)
+        global_dis = torch.empty(self.meta["n_class"], self.meta["n_class"])
         
         if client_id is None:
             outputs = self.buffers_outputs[r]
@@ -846,16 +887,26 @@ class OutputTracker():
             targets = self.buffers_targets[r][self.idx[client_id]]
         
         for c in range(self.meta["n_class"]):
-            if torch.any(targets == c).item():
-                data = outputs[targets == c]
-                # Radom subsampling for the averaging
+            # print("XXX")
+            if torch.any(targets[:,client_id] == c).item():
+                data = outputs[targets[:,client_id] == c]
+                taga = targets[targets[:,client_id] == c]
+                taga = taga[:,self_id]
+                
+                
+                for my_task in range(self.n_clients):
+                    global_dis[c][my_task] = taga[taga == my_task].shape[0]/taga.shape[0]
+                    # print(taga[taga == my_task])
+                    # print(c, my_task, global_dis[c][my_task])
+                # Random subsampling for the averaging
                 if n_avg:
                     n = min(n_avg, int(data.shape[0]))
                     idx = torch.randperm(data.shape[0])[:n]
                     data = data[idx]
                 global_outputs[c] = data.mean(dim=0)
+            
         
-        return global_outputs
+        return global_outputs, global_dis
 
 
     def plot_tSNE(self, r_list=[-1], p=30, single_client=None, savepath=None, title=None, fig_axs=None):
