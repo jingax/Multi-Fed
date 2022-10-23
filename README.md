@@ -32,7 +32,7 @@ conda activate <env_name>
 
 To run an experiment, execute the following command (only an example, type `python run.py -h` for a detailed explanation of all the arguments):
 ```train
-python run.py --n_clients 2 --dataset MNIST --reduced 0.02 --model LeNet5 --feature_dim 84 --rounds 100
+python run.py --n_clients 2 --dataset CELEBA  --model LeNet5 --feature_dim 84 --rounds 100
 ```
 
 ## Results

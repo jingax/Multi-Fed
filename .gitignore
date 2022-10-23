@@ -1,7 +1,7 @@
 # Custom
 celeb/*
 data/*
-#saves/*
+saves/*
 archives/
 *.DS_Store
 
