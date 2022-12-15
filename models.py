@@ -232,6 +232,7 @@ class Discriminator(nn.Module):
             # Scalar product between estimated probabilities
             prob =  F.softmax(self.classifier(features)/self.T, dim=1)
             prob_global =  F.softmax(self.classifier(features_global)/self.T, dim=1)
+            # print(features_global)
             scores = (prob.unsqueeze(1) * prob_global.unsqueeze(0)).sum(-1).flatten()
         elif self.method == "exponential_prob":
             # Scalar product between estimated probabilities with exponential form
@@ -239,8 +240,20 @@ class Discriminator(nn.Module):
             logits_global =  self.classifier(features_global)
             log_scores = (logits.unsqueeze(1) * logits_global.unsqueeze(0)).sum(-1).flatten()
             scores = torch.exp(log_scores/self.T) / (torch.exp(log_scores/self.T) + (self.n_class-1)/self.n_class)
+        targets_ = (labels.unsqueeze(1) == (labels_global.unsqueeze(0))).float()
+        # for i in range(scores.shape[0]):
+        #     if(scores[i]>=0 and scores[i]<=1):
+        #         pass
+        #     else:
+        #         scores[i] = 0
+
+        targets = scores.detach().clone()
         
-        targets = (labels.unsqueeze(1) == (labels_global.unsqueeze(0))).reshape(labels.shape[0] * labels_global.shape[0]).float()
+        for i in range(targets_.size()[0]):
+            if(labels[i] ==  1):
+                targets[2*i+1] = 0
+    
+            
         return scores, targets
 
     

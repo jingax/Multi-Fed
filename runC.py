@@ -4,11 +4,10 @@ import time
 import numpy as np
 import torch
 import torch.nn as nn
-import helpers as hlp
+import helperC as hlp
 import models as mdl
 import matplotlib.pyplot as plt
 import json
-import random
 
 
 def get_args():
@@ -19,14 +18,14 @@ def get_args():
     parser.add_argument('--model', type=str, default='LeNet5', help="Model architecture")
     parser.add_argument('--alpha', type=float, default=1e15, help="Concentration parameter for data split")
     parser.add_argument('--rounds', type=int, default=100,  help="Number of communication rounds")
-    parser.add_argument('--batch_size', type=int, default=15, help="Mini-batch size")
+    parser.add_argument('--batch_size', type=int, default=32, help="Mini-batch size")
     parser.add_argument('--epoch_per_round', type=int, default=1, help="Number of epoch per communication round")
-    parser.add_argument('--lr', type=float, default=1e-3,  help="Learning rate")
+    parser.add_argument('--lr', type=float, default=1e-4,  help="Learning rate")
     parser.add_argument('--optimizer', type=str, default="adam",  help="Optimizer type")
     parser.add_argument('--feature_dim', type=int, default=100, help="Number of feature")
-    parser.add_argument('--n_avg', type=int, default=10, help="Number of considered samples for the averaging")
-    parser.add_argument('--lambda_kd', type=float,default=84, help="Meta parameter for feature-based KD")
-    parser.add_argument('--lambda_disc', type=float,default=0.0, help="Meta parameter for contrastive lost")
+    parser.add_argument('--n_avg', type=int, default=20, help="Number of considered samples for the averaging")
+    parser.add_argument('--lambda_kd', type=float,default=10, help="Meta parameter for feature-based KD")
+    parser.add_argument('--lambda_disc', type=float,default=1.0, help="Meta parameter for contrastive lost")
     parser.add_argument('--kd_type', type=str, default="feature",  help="Type of KD (feature or output)")
     parser.add_argument('--sizes',type=float, nargs='*', default=None, help="Dataset sizes")
     parser.add_argument('--reduced', type=float, default=1.0, help="Reduction parameter for the train dataset")
@@ -43,7 +42,7 @@ def get_args():
 
 
 def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=100, 
-        batch_size=32, epoch_per_round=1, lr=1e-3, optimizer="adam", feature_dim=100,
+        batch_size=32, epoch_per_round=1, lr=1e-4, optimizer="adam", feature_dim=100,
         n_avg=None, lambda_kd=1.0, lambda_disc=1.0, kd_type="feature", sizes=None, reduced=False, 
         track_history=1, fed_avg=False, export_dir=None, data_dir="./data", disc_method="classifier",
         device=None, preset=None, seed=0):
@@ -131,22 +130,16 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
     # Chose device automatically (if not specified)
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print('Current cuda device: ',torch.cuda.get_device_name(0))
-        print('Active CUDA Device: GPU', torch.cuda.current_device())
-        print ('Available devices ', torch.cuda.device_count())
-        print ('Current cuda device ', torch.cuda.current_device())
     else:
         device = torch.device(device)
     print("Device: {}".format(device))
     torch.cuda.empty_cache()
-    # exit()
     
     # Reproductilility
     hlp.set_seed(seed)
-    random.seed(seed)
     
     # Load data
-    train_input, train_target, val_input, val_target, meta = hlp.load_data(n_clients,dataset=dataset, reduced=reduced, device=device)
+    train_input, train_target, val_input, val_target, meta = hlp.load_data(dataset=dataset, reduced=reduced, device=device)
     
     #Create custom torch datasets
     train_ds = hlp.CustomDataset(train_input, train_target)
@@ -162,7 +155,6 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
     global_train_dl = hlp.ds_to_dl(train_ds, batch_size=10*batch_size)
     
     #Visualize partition
-    
     hlp.visualize_class_dist(train_ds_list, meta["n_class"], 
                              title="Class distribution (alpha = {})".format(alpha),
                              savepath=os.path.join(fig_directory, "class_dist.png") if export_dir is not None else None)
@@ -186,12 +178,12 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
     if fed_avg == "model":
         perf_trackers = [hlp.PerfTracker(global_model, 
                                          {"Train": train_dl_list[i], "Validation": val_dl_list[i], "Validation (global)": global_val_dl}, 
-                                         criterion, meta["n_class"],i, ID="Client {}".format(i)) for i in range(n_clients)]
+                                         criterion, meta["n_class"], ID="Client {}".format(i)) for i in range(n_clients)]
         
     else:
         perf_trackers = [hlp.PerfTracker(client_models[i], 
-                                         {"Train": train_dl_list[i], "Validation": val_dl_list[i], "Validation (global)": global_val_dl}, 
-                                         criterion, meta["n_class"],i , ID="Client {}".format(i)) for i in range(n_clients)]
+                                         {"Train": train_dl_list[i], "Validation": val_dl_list[i]}, 
+                                         criterion, meta["n_class"], ID="Client {}".format(i)) for i in range(n_clients)]
         
     # Feature tracker and discriminator
     if kd_type == "feature":
@@ -223,7 +215,7 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
     #Each client updates its model locally on its own dataset
     for r in range(rounds):
         t0 = time.time()
-
+        
         for client_id in range(n_clients):
             #Setting up the local training
             model = client_models[client_id]
@@ -231,11 +223,11 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
             opt = optimizers[client_id]
             if lambda_disc > 0:
                 disc = discriminators[client_id]
-                teacher_data_disc = tracker.get_global_outputs(n_avg=n_avg, client_id="random").to(device)
+                teacher_data_disc = tracker.get_global_outputs(n_avg=n_avg, client_id="random",sel_cli=client_id).to(device)
                 if disc_method == "seperate":
                     opt_disc = optimizers_disc[client_id]
                 
-
+            
             #Local update
             for e in range(epoch_per_round):
                 for inputs, targets in train_dl_list[client_id]:
@@ -247,42 +239,26 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
                     # Local forward pass
                     features = model.features(inputs)
                     logits = model.classifier(features)
-                    # print(tartrackergets)
-                    # print(features.shape)    
+                        
                     # Optimization step
-                    loss = criterion(logits, targets[:,client_id])
-                    LL = 0
-                    # print("Y")
-                    if lambda_kd > 0:
+                    loss = criterion(logits, targets)
+                    if False:
                         # Compute estimated probabilities
                         if kd_type == "feature":
-                            sel_ran = random.randint(0,n_clients-2)
-                            if(sel_ran>=client_id):
-                                sel_ran += 1
-                            teacher_data, teacher_distri = tracker.get_global_outputs(client_id,n_avg=None, client_id=sel_ran)
-                            teacher_data = teacher_data.to(device)
-                            teacher_distri = teacher_distri.to(device)
-                            # print(teacher_data)
-                            # exit()
-
-                            for task in range(2):
-                                for ding in range(targets.shape[0]):
-                                    if(teacher_distri[task][targets[:,client_id][ding]]>0):
-                                        # print(targets[:,client_id][ding], task)
-                                        LL += teacher_distri[task][targets[:,client_id][ding]] *0.00023*  criterion_kd(features[ding], teacher_data[task])/targets.shape[1]
-                                        # print(teacher_distri[task][targets[:,client_id][ding]])
+                            teacher_data = tracker.get_global_outputs(n_avg=None, client_id=None).to(device)
+                            loss += lambda_kd * criterion_kd(features, teacher_data[targets])
                         elif kd_type == "output":
-                            teacher_data = tracker.get_global_outputs(client_id,n_avg=None, client_id="random").to(device)
+                            teacher_data = tracker.get_global_outputs(n_avg=None, client_id=None).to(device)
                             loss += lambda_kd * criterion_kd(logits, teacher_data[targets])
-                    if lambda_disc > 0:
+                    if True:
                         targets_global = torch.arange(meta["n_class"]).to(device)
                         scores, disc_targets = disc(features, teacher_data_disc, targets, targets_global)
+                        # print(scores,disc_targets)
                         loss += lambda_disc * criterion_disc(scores, disc_targets)
+                        
                     
                     # Optimization step
-                    loss += LL
                     loss.backward()
-
                     opt.step()
                     if disc_method == "seperate" and lambda_disc > 0:
                         opt_disc.step()
@@ -327,12 +303,12 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
     
     # Evalutate models (averaging performance)
     tr_loss = np.array([pt.perf_histories["Train"]["loss"][-1] for pt in perf_trackers]).mean()
-    val_loss = np.array([pt.perf_histories["Validation (global)"]["loss"][-1] for pt in perf_trackers]).mean()
+    val_loss = np.array([pt.perf_histories["Validation"]["loss"][-1] for pt in perf_trackers]).mean()
     tr_acc = np.array([pt.perf_histories["Train"]["accuracy"][-1] for pt in perf_trackers]).mean()
-    val_acc = np.array([pt.perf_histories["Validation (global)"]["accuracy"][-1] for pt in perf_trackers]).mean()
+    val_acc = np.array([pt.perf_histories["Validation"]["accuracy"][-1] for pt in perf_trackers]).mean()
     print("\nFinal average performance:")
-    print("\t- Train loss: {:.2f} | Validation (global) loss: {:.2f}".format(tr_loss, val_loss))
-    print("\t- Train acc: {:.2f}% | Validation (global) acc: {:.2f}%".format(100*tr_acc, 100*val_acc))
+    print("\t- Train loss: {:.2f} | Validation loss: {:.2f}".format(tr_loss, val_loss))
+    print("\t- Train acc: {:.2f}% | Validation acc: {:.2f}%".format(100*tr_acc, 100*val_acc))
     
     # Saving plots if necessary
     hlp.plot_global_training_history(perf_trackers, metric="accuracy", title="Training history: Accuracy",
