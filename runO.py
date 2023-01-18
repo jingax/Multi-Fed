@@ -4,11 +4,10 @@ import time
 import numpy as np
 import torch
 import torch.nn as nn
-import helperC as hlp
-import models as mdl
+import helpersO as hlp
+import modelO as mdl
 import matplotlib.pyplot as plt
 import json
-import random
 
 
 def get_args():
@@ -26,7 +25,7 @@ def get_args():
     parser.add_argument('--feature_dim', type=int, default=100, help="Number of feature")
     parser.add_argument('--n_avg', type=int, default=10, help="Number of considered samples for the averaging")
     parser.add_argument('--lambda_kd', type=float,default=10, help="Meta parameter for feature-based KD")
-    parser.add_argument('--lambda_disc', type=float,default=0.01, help="Meta parameter for contrastive lost")
+    parser.add_argument('--lambda_disc', type=float,default=1.0, help="Meta parameter for contrastive lost")
     parser.add_argument('--kd_type', type=str, default="feature",  help="Type of KD (feature or output)")
     parser.add_argument('--sizes',type=float, nargs='*', default=None, help="Dataset sizes")
     parser.add_argument('--reduced', type=float, default=1.0, help="Reduction parameter for the train dataset")
@@ -43,7 +42,7 @@ def get_args():
 
 
 def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=100, 
-        batch_size=32, epoch_per_round=1, lr=1e-4, optimizer="adam", feature_dim=100,
+        batch_size=32, epoch_per_round=1, lr=1e-3, optimizer="adam", feature_dim=100,
         n_avg=None, lambda_kd=1.0, lambda_disc=1.0, kd_type="feature", sizes=None, reduced=False, 
         track_history=1, fed_avg=False, export_dir=None, data_dir="./data", disc_method="classifier",
         device=None, preset=None, seed=0):
@@ -139,29 +138,6 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
     # Reproductilility
     hlp.set_seed(seed)
     
-    # set expertise of of clients 
-    expertise = [1,2,3,1,2,3,1,2,3]
-    
-    
-    partner_client_list = []
-    non_partner_client_list = []
-    for client_id in range(n_clients):
-        p = []
-        _np = []
-        for exp in range(n_clients):
-            if(client_id==exp):
-                continue
-            if(expertise[client_id] == expertise[exp]):
-                p.append(exp)
-            else:
-                _np.append(exp)
-        # print(p)
-        # print(np)
-        partner_client_list.append(p)
-        non_partner_client_list.append(_np)
-
-
-
     # Load data
     train_input, train_target, val_input, val_target, meta = hlp.load_data(dataset=dataset, reduced=reduced, device=device)
     
@@ -170,15 +146,7 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
     val_ds = hlp.CustomDataset(val_input, val_target)
     
     #Split dataset
-            
-    # exit() 
-    
     train_ds_list, val_ds_list = hlp.split_dataset(n_clients, train_ds, val_ds, alpha, sizes)
-    
-    
-    train_ds_list = hlp.expertise_oriented_train_split(train_input,train_target,n_clients,expertise,0.2)
-    # val_ds_list = hlp.expertise_oriented_test_split(val_input,val_target,n_clients,expertise)
-    val_ds_list = hlp.uniform_test_split(val_input,val_target,n_clients)
     
     #Create dataloader
     train_dl_list = hlp.ds_to_dl(train_ds_list, batch_size=batch_size)
@@ -197,8 +165,8 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
     
     # Define criterions
     criterion = nn.CrossEntropyLoss()
-    criterion_kd = nn.MSELoss(reduction ='none')
-    criterion_disc = nn.BCELoss(reduction ='none')
+    criterion_kd = nn.MSELoss()
+    criterion_disc = nn.BCELoss()
     
     # Model initialization
     client_models = [mdl.get_model(model, feature_dim, meta).to(device) for _ in range(n_clients)]
@@ -214,7 +182,7 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
         
     else:
         perf_trackers = [hlp.PerfTracker(client_models[i], 
-                                         {"Train": train_dl_list[i], "Validation": val_dl_list[i]}, 
+                                         {"Train": train_dl_list[i], "Validation": val_dl_list[i], "Validation (global)": global_val_dl}, 
                                          criterion, meta["n_class"], ID="Client {}".format(i)) for i in range(n_clients)]
         
     # Feature tracker and discriminator
@@ -255,14 +223,9 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
             opt = optimizers[client_id]
             if lambda_disc > 0:
                 disc = discriminators[client_id]
+                teacher_data_disc = tracker.get_global_outputs(n_avg=n_avg, client_id="random").to(device)
                 if disc_method == "seperate":
                     opt_disc = optimizers_disc[client_id]
-            non_partner_client = None
-            if(len(non_partner_client_list[client_id])>0):
-                rand_idx = random.randrange(len(non_partner_client_list[client_id]))
-                non_partner_client = non_partner_client_list[client_id][rand_idx]
-            non_partner_teacher_data = tracker.get_global_outputs(n_avg=n_avg, client_id="random",sel_cli=non_partner_client).to(device)
-                        
                 
             
             #Local update
@@ -279,41 +242,18 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
                         
                     # Optimization step
                     loss = criterion(logits, targets)
-                    collab_flag = True
-                    # print(no_of_ones)
-                        
-                    if collab_flag and r > -15:
+                    if False:
                         # Compute estimated probabilities
-                        partner_client = None
-                        if(len(partner_client_list[client_id])>0):
-                            rand_idx = random.randrange(len(partner_client_list[client_id]))
-                            partner_client = partner_client_list[client_id][rand_idx]
-                        partner_teacher_data     = tracker.get_global_outputs(n_avg=n_avg, client_id="random",sel_cli=partner_client).to(device)
-                
-                        _ = torch.zeros_like(targets.float())
-                        _[(_==0).nonzero().squeeze()] = 1
-                        _[(_==expertise[client_id]).nonzero().squeeze()] = 1
-                        no_of_ones = (_).sum(dim=0)
-                    
                         if kd_type == "feature":
-                            # teacher_data = tracker.get_global_outputs(n_avg=None, client_id=None).to(device)
-                            # pass
-                            # print(torch.mean(criterion_kd(features, partner_teacher_data[targets]),1).shape)
-                            loss += lambda_kd * torch.dot(torch.mean(criterion_kd(features, partner_teacher_data[targets]),1),_)/no_of_ones
+                            teacher_data = tracker.get_global_outputs(n_avg=None, client_id=None).to(device)
+                            loss += lambda_kd * criterion_kd(features, teacher_data[targets])
                         elif kd_type == "output":
-                            # teacher_data = tracker.get_global_outputs(n_avg=None, client_id=None).to(device)
-                            loss += lambda_kd * torch.dot(criterion_kd(logits, partner_teacher_data[targets]),_)/no_of_ones
-                    if collab_flag  and r > -5:
+                            teacher_data = tracker.get_global_outputs(n_avg=None, client_id=None).to(device)
+                            loss += lambda_kd * criterion_kd(logits, teacher_data[targets])
+                    if True:
                         targets_global = torch.arange(meta["n_class"]).to(device)
-                        scores, disc_targets = disc(features, non_partner_teacher_data, targets, targets_global)
-                        _ = torch.tensor([[1.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0]])
-                        _[0][expertise[non_partner_client]] = 1.0
-                        _[expertise[non_partner_client]][expertise[client_id]] = 1.0 
-                        _ = _[targets].flatten().to(device)
-
-                        no_of_ones = (_).sum(dim=0)
-                        loss += lambda_disc * torch.dot(criterion_disc(scores, disc_targets),_)/no_of_ones
-                        
+                        scores, disc_targets = disc(features, teacher_data_disc, targets, targets_global)
+                        loss += lambda_disc * criterion_disc(scores, disc_targets)
                     
                     # Optimization step
                     loss.backward()
@@ -361,12 +301,12 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
     
     # Evalutate models (averaging performance)
     tr_loss = np.array([pt.perf_histories["Train"]["loss"][-1] for pt in perf_trackers]).mean()
-    val_loss = np.array([pt.perf_histories["Validation"]["loss"][-1] for pt in perf_trackers]).mean()
+    val_loss = np.array([pt.perf_histories["Validation (global)"]["loss"][-1] for pt in perf_trackers]).mean()
     tr_acc = np.array([pt.perf_histories["Train"]["accuracy"][-1] for pt in perf_trackers]).mean()
-    val_acc = np.array([pt.perf_histories["Validation"]["accuracy"][-1] for pt in perf_trackers]).mean()
+    val_acc = np.array([pt.perf_histories["Validation (global)"]["accuracy"][-1] for pt in perf_trackers]).mean()
     print("\nFinal average performance:")
-    print("\t- Train loss: {:.2f} | Validation loss: {:.2f}".format(tr_loss, val_loss))
-    print("\t- Train acc: {:.2f}% | Validation acc: {:.2f}%".format(100*tr_acc, 100*val_acc))
+    print("\t- Train loss: {:.2f} | Validation (global) loss: {:.2f}".format(tr_loss, val_loss))
+    print("\t- Train acc: {:.2f}% | Validation (global) acc: {:.2f}%".format(100*tr_acc, 100*val_acc))
     
     # Saving plots if necessary
     hlp.plot_global_training_history(perf_trackers, metric="accuracy", title="Training history: Accuracy",

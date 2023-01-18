@@ -1,1 +1,5 @@
-CUDA_LAUNCH_BLOCKING=1 python runC.py --n_clients  62 --dataset EMNIST  --model LeNet5 --feature_dim 84 --rounds 100 --seed 0 --reduced 1
+CUDA_VISIBLE_DEVICES=2 python runC.py --n_clients 9 --dataset COVID --model ResNet9 --feature_dim 250 --rounds 30 --seed 1
+CUDA_VISIBLE_DEVICES=2 python runC.py --n_clients 9 --dataset COVID --model ResNet9 --feature_dim 250 --rounds 30 --seed 2
+CUDA_VISIBLE_DEVICES=2 python runC.py --n_clients 9 --dataset COVID --model ResNet9 --feature_dim 250 --rounds 30 --seed 3
+CUDA_VISIBLE_DEVICES=2 python runC.py --n_clients 9 --dataset COVID --model ResNet9 --feature_dim 250 --rounds 30 --seed 4
+CUDA_VISIBLE_DEVICES=2 python runC.py --n_clients 9 --dataset COVID --model ResNet9 --feature_dim 250 --rounds 30 --seed 5

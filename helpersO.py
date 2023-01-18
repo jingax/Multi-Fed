@@ -81,6 +81,28 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False, normalize="imag
         meta["class_names"] = ["airplane", "automobile", "bird", "cat", 
                                "deer", "dog", "frog", "horse", "ship", "truck"]
     
+
+    elif dataset == "COVID":
+        print("** Using COVID **")
+        print("Load train data...")
+        train_input, train_target = DM.get_covid()
+        train_input = train_input.float()
+        print("Load validation data...")
+        test_input, test_target = DM.get_covid()
+        test_input = test_input.float()
+        # Process train data
+        # train_input = train_set.data.view(-1, 1, 28, 28).float()
+        # train_target = train_set.targets
+        
+        # # Process validation data
+        # test_input = test_set.data.view(-1, 1, 28, 28).float()
+        # test_target = test_set.targets
+        
+        # Update metadata
+        meta["n_class"] = 4
+        meta["class_names"] = ["0", "1", "2", "3"]
+    
+
     elif dataset == "CIFAR100":
         # Load
         print("** Using CIFAR **")
@@ -115,26 +137,6 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False, normalize="imag
                                "sweet_pepper", "table", "tank", "telephone", "television", "tiger", "tractor",
                                "train", "trout", "tulip", "turtle", "wardrobe", "whale", "willow_tree", "wolf",
                                "woman", "worm"]
-
-    elif dataset == "COVID":
-        print("** Using COVID **")
-        print("Load train data...")
-        train_input, train_target = DM.get_covid(_type_="train")
-        train_input = train_input.float()
-        print("Load validation data...")
-        test_input, test_target = DM.get_covid(_type_="test")
-        test_input = test_input.float()
-        # Process train data
-        # train_input = train_set.data.view(-1, 1, 28, 28).float()
-        # train_target = train_set.targets
-        
-        # # Process validation data
-        # test_input = test_set.data.view(-1, 1, 28, 28).float()
-        # test_target = test_set.targets
-        
-        # Update metadata
-        meta["n_class"] = 4
-        meta["class_names"] = ["0", "1", "2", "3"]
         
     elif dataset == "MNIST":
         print("** Using MNIST **")
@@ -152,8 +154,8 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False, normalize="imag
         test_target = test_set.targets
         
         # Update metadata
-        meta["n_class"] = 2
-        meta["class_names"] = ["0", "1"]
+        meta["n_class"] = 10
+        meta["class_names"] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
         
     elif dataset == "FMNIST":
         print("** Using FMNIST **")
@@ -171,11 +173,9 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False, normalize="imag
         test_target = test_set.targets
         
         # Update metadata
-        meta["n_class"] = 2
-        meta["class_names"] = ["0", "1"]
-        # meta["n_class"] = 10
-        # meta["class_names"] = ["T-shirt/top", "Trouser", "Pullover", "Dress", 
-        #                        "Coat", "Sandal", "Shirt", "Sneaker", "Bag",  "Ankle boot"]
+        meta["n_class"] = 10
+        meta["class_names"] = ["T-shirt/top", "Trouser", "Pullover", "Dress", 
+                               "Coat", "Sandal", "Shirt", "Sneaker", "Bag",  "Ankle boot"]
     elif dataset == "EMNIST":
         print("** Using EMNIST **")
         print("Load train data...")
@@ -192,27 +192,23 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False, normalize="imag
         test_target = test_set.targets
         
         # Update metadata
-        # meta["n_class"] = 1
-        # meta["class_names"] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", 
-        #                        "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", 
-        #                        "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "d", 
-        #                        "e", "f", "g", "h", "n", "q", "r", "t"]
-        meta["n_class"] = 2
-        meta["class_names"] = ["0", "1"]
-        
+        meta["n_class"] = 1
+        meta["class_names"] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", 
+                               "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", 
+                               "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "d", 
+                               "e", "f", "g", "h", "n", "q", "r", "t"]
     else:
         raise ValueError("Unknown dataset.")
     
     if flatten:
         train_input = train_input.clone().reshape(train_input.size(0), -1)
         test_input = test_input.clone().reshape(test_input.size(0), -1)
-    # print(reduced)
-    if False:
-        N = 1200
-        train_input = train_input.narrow(0, 0, N)
-        train_target = train_target.narrow(0, 0, N)
-        test_input = test_input.narrow(0, 0, N)
-        test_target = test_target.narrow(0, 0, N)
+
+    if reduced == "small" or reduced is True:
+        train_input = train_input.narrow(0, 0, 2000)
+        train_target = train_target.narrow(0, 0, 2000)
+        test_input = test_input.narrow(0, 0, 1000)
+        test_target = test_target.narrow(0, 0, 1000)
     
     elif reduced == "tiny":
         train_input = train_input.narrow(0, 0, 400)
@@ -466,134 +462,13 @@ def split_dataset(n_clients, train_ds, val_ds, alpha, sizes=None):
                 val_y_list[client_id].append(val_ds.targets[index_class_val[:val_dist[client_id, c]]])
                 index_class_val = index_class_val[val_dist[client_id, c]:]
 
-    
     for client_id in range(n_clients):
-        for x in range(1,len(train_y_list[client_id])):
-            if x == client_id:
-                train_y_list[client_id][x] = torch.ones_like(train_y_list[client_id][x])
-                # p = int(train_y_list[client_id][x].shape[0]/2)
-                # train_y_list[client_id][x] = train_y_list[client_id][x][0:p]
-                # train_x_list[client_id][x] = train_x_list[client_id][x][0:p,:,:]
-                
-            elif x == 0:
-                train_y_list[client_id][x] = torch.zeros_like(train_y_list[client_id][x])
-                # print(train_y_list[client_id][x].shape)
-                # p = int(train_y_list[client_id][x].shape[0]/3)
-                # train_y_list[client_id][x] = train_y_list[client_id][x][0:p]
-                # train_x_list[client_id][x] = train_x_list[client_id][x][0:p,:,:]
-                # # print(train_x_list[client_id][x].shape)
-            else:
-                train_y_list[client_id][x] = torch.empty(0, dtype=torch.long).to("cuda")
-                train_x_list[client_id][x] = torch.empty(0,1,200,200).to("cuda")
-            
-        for x in range(1,len(val_y_list[client_id])):
-            if x == client_id:
-                val_y_list[client_id][x] = torch.ones_like(val_y_list[client_id][x])
-                # p = int(val_y_list[client_id][x].shape[0]/2)
-                # val_y_list[client_id][x] = val_y_list[client_id][x][0:p]
-                # val_x_list[client_id][x] = val_x_list[client_id][x][0:p,:,:]
-                
-            else:
-                val_y_list[client_id][x] = torch.zeros_like(val_y_list[client_id][x])
-                # p = int(val_y_list[client_id][x].shape[0]/3)
-                # val_y_list[client_id][x] = val_y_list[client_id][x][0:p]
-                # val_x_list[client_id][x] = val_x_list[client_id][x][0:p,:,:]
-                
-            
-            # print(x,train_y_list[client_id][x])
         train_ds_list.append(CustomDataset(torch.cat(train_x_list[client_id], dim=0),
                                               torch.cat(train_y_list[client_id], dim=0)))
         val_ds_list.append(CustomDataset(torch.cat(val_x_list[client_id], dim=0),
                                             torch.cat(val_y_list[client_id], dim=0)))
-    
+
     return train_ds_list, val_ds_list
-
-def counter_func(lst,val):
-        res = 0
-        for x in lst:
-            if(x==val):
-                res += 1
-        return res
-
-def uniform_test_split(val_input,val_target,n_clients):
-    val_ds_list = []
-    for _ in range(n_clients):
-        val_ds_list.append(CustomDataset(val_input,val_target))
-    return val_ds_list
-
-
-
-def expertise_oriented_test_split(val_input,val_target,n_clients,expertise):
-    expertise_count = []
-    for _ in range(4):
-        expertise_count.append(counter_func(expertise,_))
-    cls_indx = []
-    for cls_ in range(4):
-        first = (val_target!=cls_).nonzero().squeeze()
-        second = (val_target!=0).nonzero().squeeze()
-        idx_s   = first[(first.view(1, -1) == second.view(-1, 1)).any(dim=0)]
-        cls_indx.append(idx_s)
-
-    val_ds_list = []
-    for client_id in range(n_clients):
-        _ = val_target[cls_indx[expertise[client_id]]]
-        _ = 2*torch.ones_like(_)
-        _ = CustomDataset(val_input[cls_indx[expertise[client_id]]],_)
-        val_ds_list.append(_)
-        
-    return val_ds_list
-
-
-
-def expertise_oriented_train_split(train_input,train_target,n_clients,expertise,noise):
-    expertise_count = []
-    for _ in range(4):
-        expertise_count.append(counter_func(expertise,_))
-    cls_indx = []
-    noise_cls_indx = []
-    for cls_ in range(4):
-        idx_s = (train_target==cls_).nonzero().squeeze()
-        noise_len = int(idx_s.shape[0]*noise)
-        noise_cls_indx.append(idx_s[0:noise_len])
-        cls_indx.append(idx_s[-(idx_s.shape[0] - noise_len):])
-
-    train_data_idxs = []
-
-    used_idxs = [0]*4
-    
-    for client_id in range(n_clients):
-        idxs = []
-        # add noise
-        for cls in range(4):
-            _ = torch.tensor_split(noise_cls_indx[cls], n_clients)  
-            # if(cls==0):
-            #     train_target[_[client_id]] = 0
-            # elif(cls==expertise[client_id]):
-            #     train_target[_[client_id]] = 1
-            # else:
-            #     train_target[_[client_id]] = 2
-
-            idxs.append(_[client_id])
-        
-        # add class 0
-        _ = torch.tensor_split(cls_indx[0], n_clients)
-        idxs.append(_[client_id])
-        # train_target[_[client_id]] = 0
-
-        # add expertise
-        _ = torch.tensor_split(cls_indx[expertise[client_id]], expertise_count[expertise[client_id]])
-        idxs.append(_[used_idxs[expertise[client_id]]])
-        # train_target[_[used_idxs[expertise[client_id]]]] = 1
-
-        used_idxs[expertise[client_id]] += 1
-        _ = torch.cat(idxs, dim=0)
-        _ = _[torch.randperm(_.size()[0])]
-        train_data_idxs.append(_)
-        
-        
-    train_ds_list = [CustomDataset(train_input[_],train_target[_]) for _ in train_data_idxs]
-    return train_ds_list
-    
 
 def visualize_class_dist(ds_list, n_class, title=None, savepath=None):
     """Plot the class distribution across the clients.
@@ -969,7 +844,7 @@ class OutputTracker():
         self.buffers_targets.append(buffer_targets)
 
     
-    def get_global_outputs(self, r=-1, n_avg=None, client_id=None, sel_cli=None):
+    def get_global_outputs(self, r=-1, n_avg=None, client_id=None):
         """Return the global aggregated output at the given round.
         
         Arguments:
@@ -984,7 +859,6 @@ class OutputTracker():
             raise ValueError("'n_avg' must be a positive integer.")
         
         # Extract data
-        # global_outputs = torch.empty(self.meta["n_class"], self.dim)
         global_outputs = torch.empty(self.meta["n_class"], self.dim)
         
         if client_id is None:
@@ -992,8 +866,7 @@ class OutputTracker():
             targets = self.buffers_targets[r]
         else:
             if client_id == "random":
-                client_id = sel_cli
-            # print(len(self.idx),client_id,"X")
+                client_id = random.randint(0, self.n_clients-1)
             outputs = self.buffers_outputs[r][self.idx[client_id]]
             targets = self.buffers_targets[r][self.idx[client_id]]
         

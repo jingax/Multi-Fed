@@ -1,9 +1,13 @@
 import pandas as pd
 import numpy as np
-from keras.preprocessing import image
+# from keras.preprocessing import image
+# import torch
+# import keras
+# import itertools
 import torch
-import keras
-import itertools
+from PIL import Image
+import torchvision.transforms as transforms
+
 
 
 
@@ -104,3 +108,48 @@ def celebA_loader(corr,data_length,n_clients):
 
     return X, y
 
+
+def get_covid(_type_):
+    df = pd.DataFrame(columns = ['image', 'label'])
+    # normal, covid, nemoina, opa
+    no_images = [10192, 3616, 1345, 6012]
+    act_no = [110]*4
+    if(_type_ == "train"):
+        act_no[0] *= 9    
+    label = 0
+    for i in range(0,min(act_no[label], no_images[label])):
+        df = df.append({'image' : f'./covid/COVID-19_Radiography_Dataset/Normal/images/Normal-{i+1}.png', 'label' : label}, ignore_index = True)
+
+    label = 1
+    for i in range(0,min(act_no[label], no_images[label])):
+        df = df.append({'image' : f'./covid/COVID-19_Radiography_Dataset/COVID/images/COVID-{i+1}.png', 'label' : label}, ignore_index = True)
+
+    label = 2
+    for i in range(0,min(act_no[label], no_images[label])):
+        df = df.append({'image' : f'./covid/COVID-19_Radiography_Dataset/Viral Pneumonia/images/Viral Pneumonia-{i+1}.png', 'label' : label}, ignore_index = True)
+
+    label = 3
+    for i in range(0,min(act_no[label], no_images[label])):
+        df = df.append({'image' : f'./covid/COVID-19_Radiography_Dataset/Lung_Opacity/images/Lung_Opacity-{i+1}.png', 'label' : label}, ignore_index = True)
+
+    # df = df.sample(frac=1).reset_index(drop=True)
+    
+    # print(df.head())
+    images = []
+    labels = []
+    transform = transforms.Compose([transforms.PILToTensor()])
+    for index, row in df.iterrows():
+        image = Image.open(row['image'])
+        image = image.resize((200,200))
+        img_tensor = transform(image).to(torch.float)
+        if(img_tensor.shape[0]!=1):
+            continue
+        images.append(img_tensor)
+        labels.append(row['label'])
+        # print(index, img_tensor.dtype,row['label'])
+    labels = torch.tensor(labels,dtype=torch.long)
+    images = torch.stack(images, dim=0)
+    # images = np.array(images)
+    # print(type(images), type(labels))
+    # print(images.shape, labels.shape)
+    return images, labels

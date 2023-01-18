@@ -228,13 +228,10 @@ class Discriminator(nn.Module):
             raise ValueError("'n_class' must be specified for 'exponential_prob'.")
         
     def forward(self, features, features_global, labels, labels_global):
-        # features_global = features_global[0:2]
-        # print(features_global.shape,"AJAJAJJAJAJJAJ")
         if self.method == "prob_product":
             # Scalar product between estimated probabilities
             prob =  F.softmax(self.classifier(features)/self.T, dim=1)
             prob_global =  F.softmax(self.classifier(features_global)/self.T, dim=1)
-            # print(features_global)
             scores = (prob.unsqueeze(1) * prob_global.unsqueeze(0)).sum(-1).flatten()
         elif self.method == "exponential_prob":
             # Scalar product between estimated probabilities with exponential form
@@ -242,12 +239,9 @@ class Discriminator(nn.Module):
             logits_global =  self.classifier(features_global)
             log_scores = (logits.unsqueeze(1) * logits_global.unsqueeze(0)).sum(-1).flatten()
             scores = torch.exp(log_scores/self.T) / (torch.exp(log_scores/self.T) + (self.n_class-1)/self.n_class)
-        # targets_ = (labels.unsqueeze(1) == (labels_global.unsqueeze(0))).float()
         
-        # targets = torch.zeros_like(scores)
-        targets = torch.cat([torch.ones_like(labels).unsqueeze(1),torch.zeros_like(labels).unsqueeze(1),torch.zeros_like(labels).unsqueeze(1),torch.zeros_like(labels).unsqueeze(1)],1).flatten()
-            
-        return scores, targets.float()
+        targets = (labels.unsqueeze(1) == (labels_global.unsqueeze(0))).reshape(labels.shape[0] * labels_global.shape[0]).float()
+        return scores, targets
 
     
 
