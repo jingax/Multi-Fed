@@ -9,7 +9,7 @@ from PIL import Image
 import torchvision.transforms as transforms
 
 
-
+np.random.seed(0)
 
 def celebA_loader(corr,data_length,n_clients):
     df = pd.read_csv('./celeb/anno.csv')
@@ -109,40 +109,56 @@ def celebA_loader(corr,data_length,n_clients):
     return X, y
 
 
-def get_covid(_type_):
+def get_covid(_type_,_size_):
     df = pd.DataFrame(columns = ['image', 'label'])
     # normal, covid, nemoina, opa
     no_images = [10192, 3616, 1345, 6012]
-    act_no = [110]*4
-    if(_type_ == "train"):
-        act_no[0] *= 9    
+    act_no = [_size_]*4
+    # if(_type_ == "train"):
+    #     act_no[0] *= 3    
     label = 0
-    for i in range(0,min(act_no[label], no_images[label])):
-        df = df.append({'image' : f'./covid/COVID-19_Radiography_Dataset/Normal/images/Normal-{i+1}.png', 'label' : label}, ignore_index = True)
-
+    permu = np.random.permutation(no_images[label])
+    # print(min(act_no[label], no_images[label]))
+    i = 0
+    while i < min(act_no[label], no_images[label]):
+        df = df.append({'image' : f'./covid/COVID-19_Radiography_Dataset/Normal/images/Normal-{permu[i]+1}.png', 'label' : label}, ignore_index = True)
+        i += 1
     label = 1
-    for i in range(0,min(act_no[label], no_images[label])):
-        df = df.append({'image' : f'./covid/COVID-19_Radiography_Dataset/COVID/images/COVID-{i+1}.png', 'label' : label}, ignore_index = True)
-
+    # print(min(act_no[label], no_images[label]))
+    i = 0
+    permu = np.random.permutation(no_images[label])
+    while i < min(act_no[label], no_images[label]):
+        df = df.append({'image' : f'./covid/COVID-19_Radiography_Dataset/COVID/images/COVID-{permu[i]+1}.png', 'label' : label}, ignore_index = True)
+        i += 1
+    i = 0
     label = 2
-    for i in range(0,min(act_no[label], no_images[label])):
-        df = df.append({'image' : f'./covid/COVID-19_Radiography_Dataset/Viral Pneumonia/images/Viral Pneumonia-{i+1}.png', 'label' : label}, ignore_index = True)
-
-    label = 3
-    for i in range(0,min(act_no[label], no_images[label])):
-        df = df.append({'image' : f'./covid/COVID-19_Radiography_Dataset/Lung_Opacity/images/Lung_Opacity-{i+1}.png', 'label' : label}, ignore_index = True)
-
+    permu = np.random.permutation(no_images[label])
+    # print(min(act_no[label], no_images[label]))
+    while i < min(act_no[label], no_images[label]):
+        df = df.append({'image' : f'./covid/COVID-19_Radiography_Dataset/Viral Pneumonia/images/Viral Pneumonia-{permu[i]+1}.png', 'label' : label}, ignore_index = True)
+        i += 1
+    
+    
+    # i = 0
+    # label = 3
+    # permu = np.random.permutation(no_images[label])
+    # # print(min(act_no[label], no_images[label]))
+    # while i < min(act_no[label], no_images[label]):
+    #     df = df.append({'image' : f'./covid/COVID-19_Radiography_Dataset/Lung_Opacity/images/Lung_Opacity-{permu[i]+1}.png', 'label' : label}, ignore_index = True)
+    #     i += 1
     # df = df.sample(frac=1).reset_index(drop=True)
     
-    # print(df.head())
     images = []
     labels = []
+    GRAY = transforms.Grayscale()
     transform = transforms.Compose([transforms.PILToTensor()])
     for index, row in df.iterrows():
         image = Image.open(row['image'])
         image = image.resize((200,200))
+        image = GRAY(image)
         img_tensor = transform(image).to(torch.float)
         if(img_tensor.shape[0]!=1):
+            print(img_tensor.shape)
             continue
         images.append(img_tensor)
         labels.append(row['label'])

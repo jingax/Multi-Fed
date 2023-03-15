@@ -24,10 +24,10 @@ def get_args():
     parser.add_argument('--lr', type=float, default=1e-3,  help="Learning rate")
     parser.add_argument('--optimizer', type=str, default="adam",  help="Optimizer type")
     parser.add_argument('--feature_dim', type=int, default=100, help="Number of feature")
-    parser.add_argument('--n_avg', type=int, default=5, help="Number of considered samples for the averaging")
+    parser.add_argument('--n_avg', type=int, default=10, help="Number of considered samples for the averaging")
     parser.add_argument('--lambda_kd', type=float,default=1, help="Meta parameter for feature-based KD")
-    parser.add_argument('--lambda_disc', type=float,default=1, help="Meta parameter for contrastive lost")
-    parser.add_argument('--kd_type', type=str, default="output",  help="Type of KD (feature or output)")
+    parser.add_argument('--lambda_disc', type=float,default=0.01, help="Meta parameter for contrastive lost")
+    parser.add_argument('--kd_type', type=str, default="feature",  help="Type of KD (feature or output)")
     parser.add_argument('--sizes',type=float, nargs='*', default=None, help="Dataset sizes")
     parser.add_argument('--reduced', type=float, default=1.0, help="Reduction parameter for the train dataset")
     parser.add_argument('--track_history', type=int, default=1, help="Intervall beween validation evaluation during training")
@@ -38,18 +38,15 @@ def get_args():
     parser.add_argument('--device', type=str, default=None, help="Device to use for learning")
     parser.add_argument('--preset', type=str, default=None, help="Learning preset (fl, fd, il or cl)")
     parser.add_argument('--seed', type=int, default=0, help="Seed for reproductability")
-    parser.add_argument('--data_size', type=int, default=90, help="data_size")
-    parser.add_argument('--collab_flag', type=bool, default=False, help="collab_flag")
-    parser.add_argument('--noise', type=float, default=0.0, help="Noise")
     args = parser.parse_args()
     return args
 
 
 def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=100, 
         batch_size=32, epoch_per_round=1, lr=1e-4, optimizer="adam", feature_dim=100,
-        n_avg=None, lambda_kd=1.0, lambda_disc=1.0, kd_type="output", sizes=None, reduced=False, 
+        n_avg=None, lambda_kd=1.0, lambda_disc=1.0, kd_type="feature", sizes=None, reduced=False, 
         track_history=1, fed_avg=False, export_dir=None, data_dir="./data", disc_method="classifier",
-        device=None, preset=None, seed=0, data_size=90, collab_flag=False,noise=0.0):
+        device=None, preset=None, seed=0):
     """Run an experiment.
     
     Arguments:
@@ -113,7 +110,7 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
     if kd_type == "output" and lambda_disc != 0:
         lambda_disc = 0
         print("Warning: lambda_disc has been set to 0 since output-based kd is used (FD).")
-    
+
     # Store parameters for easy reproductability
     if export_dir is not None:
         # Store local parameters
@@ -143,7 +140,7 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
     hlp.set_seed(seed)
     
     # set expertise of of clients 
-    expertise = [1,2]
+    expertise = [1,2,3,1,2,3,1,2,3]
     
     
     partner_client_list = []
@@ -166,7 +163,7 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
 
 
     # Load data
-    train_input, train_target, val_input, val_target, meta = hlp.load_data(dataset=dataset, data_size = data_size, reduced=reduced, device=device)
+    train_input, train_target, val_input, val_target, meta = hlp.load_data(dataset=dataset, reduced=reduced, device=device)
     
     #Create custom torch datasets
     train_ds = hlp.CustomDataset(train_input, train_target)
@@ -176,18 +173,16 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
             
     # exit() 
     
-    train_ds_list, val_ds_list = hlp.split_dataset(n_clients, train_ds, val_ds, alpha, expertise, noise, sizes)
+    train_ds_list, val_ds_list = hlp.split_dataset(n_clients, train_ds, val_ds, alpha, sizes)
     
     
-    # train_ds_list = hlp.expertise_oriented_train_split(train_input,train_target,n_clients,expertise,0.1)
+    train_ds_list = hlp.expertise_oriented_train_split(train_input,train_target,n_clients,expertise,0.1)
     # val_ds_list = hlp.expertise_oriented_test_split(val_input,val_target,n_clients,expertise)
-    val_ds_list = hlp.uniform_test_split(val_input,val_target,n_clients,meta["n_class"])
+    val_ds_list = hlp.uniform_test_split(val_input,val_target,n_clients)
     # exit()
     #Create dataloader
     train_dl_list = hlp.ds_to_dl(train_ds_list, batch_size=batch_size)
-    val_dl_list = [0]*n_clients
-    for _ in range(n_clients):
-        val_dl_list[_] = hlp.ds_to_dl(val_ds_list[_], batch_size=batch_size)
+    val_dl_list = hlp.ds_to_dl(val_ds_list, batch_size=batch_size)
     global_val_dl = hlp.ds_to_dl(val_ds, batch_size=batch_size)
     global_train_dl = hlp.ds_to_dl(train_ds, batch_size=batch_size)
     
@@ -202,7 +197,7 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
     
     # Define criterions
     criterion = nn.CrossEntropyLoss()
-    criterion_kd = nn.MSELoss()
+    criterion_kd = nn.MSELoss(reduction ='none')
     criterion_disc = nn.BCELoss(reduction ='none')
     
     # Model initialization
@@ -210,26 +205,23 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
     if fed_avg in ["model", "classifier"]:
         global_model = mdl.get_model(model, feature_dim, meta).to(device)
     
+    
     # Performance tracker
     if fed_avg == "model":
         perf_trackers = [hlp.PerfTracker(global_model, 
-                                         {"Train": train_dl_list[i], "Validation0": val_dl_list[i][0], "Validation1": val_dl_list[i][1], "Validation2": val_dl_list[i][2], "Validation (global)": global_val_dl}, 
+                                         {"Train": train_dl_list[i], "Validation": val_dl_list[i], "Validation (global)": global_val_dl}, 
                                          criterion, meta["n_class"], ID="Client {}".format(i)) for i in range(n_clients)]
         
     else:
         perf_trackers = [hlp.PerfTracker(client_models[i], 
-                                         {"Train": train_dl_list[i], "Validation0": val_dl_list[i][0], "Validation1": val_dl_list[i][1], "Validation2": val_dl_list[i][2]}, 
+                                         {"Train": train_dl_list[i], "Validation": val_dl_list[i]}, 
                                          criterion, meta["n_class"], ID="Client {}".format(i)) for i in range(n_clients)]
         
     # Feature tracker and discriminator
-    # if kd_type == "feature":
-    #     tracker = hlp.OutputTracker([m.features for m in client_models], train_dl_list, feature_dim, meta)
-    # elif kd_type == "output":
-    #     tracker = hlp.OutputTracker(client_models, train_dl_list, meta["n_class"], meta)
-    
-    # parallel trackers for feature and output sharing
-    feature_tracker = hlp.OutputTracker([m.features for m in client_models], train_dl_list, feature_dim, meta)
-    logits_tracker = hlp.OutputTracker(client_models, train_dl_list, meta["n_class"], meta)
+    if kd_type == "feature":
+        tracker = hlp.OutputTracker([m.features for m in client_models], train_dl_list, feature_dim, meta)
+    elif kd_type == "output":
+        tracker = hlp.OutputTracker(client_models, train_dl_list, meta["n_class"], meta)
     
     if lambda_disc > 0:
         if disc_method == "classifier":
@@ -265,6 +257,13 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
                 disc = discriminators[client_id]
                 if disc_method == "seperate":
                     opt_disc = optimizers_disc[client_id]
+            non_partner_client = None
+            if(len(non_partner_client_list[client_id])>0):
+                rand_idx = random.randrange(len(non_partner_client_list[client_id]))
+                non_partner_client = non_partner_client_list[client_id][rand_idx]
+            non_partner_teacher_data = tracker.get_global_outputs(n_avg=n_avg, client_id="random",sel_cli=non_partner_client).to(device)
+                        
+                
             
             #Local update
             for e in range(epoch_per_round):
@@ -280,64 +279,42 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
                         
                     # Optimization step
                     loss = criterion(logits, targets)
-                    
+                    collab_flag = True
                     # print(no_of_ones)
-                    non_partner_client = None
-                    if(len(non_partner_client_list[client_id])>0):
-                        rand_idx = random.randrange(len(non_partner_client_list[client_id]))
-                        non_partner_client = non_partner_client_list[client_id][rand_idx]
-               
-                    if lambda_kd > 0:
+                        
+                    if collab_flag and r > 15 and False:
                         # Compute estimated probabilities
-                        rand_idx = random.randrange(n_clients-1)
-                        if(rand_idx >= client_id):
-                            rand_idx += 1
-                        partner_teacher_data = logits_tracker.get_global_outputs(n_avg=n_avg, client_id="random",sel_cli=rand_idx).to(device)
-                        loss += lambda_kd * criterion_kd(logits, partner_teacher_data[targets])
-                        
-
-                        # partner_client = None
-                        # if(len(partner_client_list[client_id])>0):
-                        #     rand_idx = random.randrange(len(partner_client_list[client_id]))
-                        #     partner_client = partner_client_list[client_id][rand_idx]
-                        # partner_teacher_data     = logits_tracker.get_global_outputs(n_avg=n_avg, client_id="random",sel_cli=partner_client).to(device)
-                        # non_partner_teacher_data = logits_tracker.get_global_outputs(n_avg=n_avg, client_id="random",sel_cli=non_partner_client).to(device)
-                        
-                        # _pull = torch.zeros_like(targets.float())
-                        # _pull[(targets==0).nonzero().squeeze()] = 1
-                        # _pull[(targets==expertise[client_id]).nonzero().squeeze()] = 1
-                        # no_of_ones_pull = (_pull).sum(dim=0)
-                        
-                        # _push = torch.zeros_like(targets.float())
-                        # _pull[(targets==0).nonzero().squeeze()] = 1
-                        # _push[(targets==expertise[non_partner_client]).nonzero().squeeze()] = 1
-                        # no_of_ones_push = (_push).sum(dim=0)
-                        
-                        # loss += lambda_kd * torch.dot(torch.mean(criterion_kd(logits, partner_teacher_data[targets]),1),_pull)/no_of_ones_pull
-                        # loss += lambda_kd * torch.dot(torch.mean(criterion_kd(logits, non_partner_teacher_data[targets]),1),_push)/no_of_ones_push
-
-
-
-
-
-                        # if kd_type == "feature":
-                        #     loss += lambda_kd * torch.dot(torch.mean(criterion_kd(features, partner_teacher_data[targets]),1),_pull)/no_of_ones_pull
-                        #     # loss += lambda_kd * torch.dot(torch.mean(criterion_kd(features, non_partner_teacher_data[targets]),1),_push)/no_of_ones_push
-                        # elif kd_type == "output":
-                        #     loss += lambda_kd * torch.dot(torch.mean(criterion_kd(logits, partner_teacher_data[targets]),1),_pull)/no_of_ones_pull
-                        #     # loss += lambda_kd * torch.dot(torch.mean(criterion_kd(logits, non_partner_teacher_data[targets]),1),_push)/no_of_ones_push
-                    if lambda_disc > 0 and False:
-                        non_partner_teacher_data = feature_tracker.get_global_outputs(n_avg=n_avg, client_id="random",sel_cli=non_partner_client).to(device)
+                        partner_client = None
+                        if(len(partner_client_list[client_id])>0):
+                            rand_idx = random.randrange(len(partner_client_list[client_id]))
+                            partner_client = partner_client_list[client_id][rand_idx]
+                        partner_teacher_data     = tracker.get_global_outputs(n_avg=n_avg, client_id="random",sel_cli=partner_client).to(device)
+                
+                        _ = torch.zeros_like(targets.float())
+                        _[(_==0).nonzero().squeeze()] = 1
+                        _[(_==expertise[client_id]).nonzero().squeeze()] = 1
+                        no_of_ones = (_).sum(dim=0)
+                    
+                        if kd_type == "feature":
+                            # teacher_data = tracker.get_global_outputs(n_avg=None, client_id=None).to(device)
+                            # pass
+                            # print(torch.mean(criterion_kd(features, partner_teacher_data[targets]),1).shape)
+                            loss += lambda_kd * torch.dot(torch.mean(criterion_kd(features, partner_teacher_data[targets]),1),_)/no_of_ones
+                        elif kd_type == "output":
+                            # teacher_data = tracker.get_global_outputs(n_avg=None, client_id=None).to(device)
+                            loss += lambda_kd * torch.dot(criterion_kd(logits, partner_teacher_data[targets]),_)/no_of_ones
+                    if collab_flag  and r > 5:
                         targets_global = torch.arange(meta["n_class"]).to(device)
                         scores, disc_targets = disc(features, non_partner_teacher_data, targets, targets_global)
                         _ = torch.tensor([[1.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0]])
                         _[0][expertise[non_partner_client]] = 1.0
-                        _[expertise[client_id]][expertise[non_partner_client]] = 1.0 
-                        # print(_.shape,_[targets].shape)
+                        _[expertise[non_partner_client]][expertise[client_id]] = 1.0 
                         _ = _[targets].flatten().to(device)
+
                         no_of_ones = (_).sum(dim=0)
                         loss += lambda_disc * torch.dot(criterion_disc(scores, disc_targets),_)/no_of_ones
                         
+                    
                     # Optimization step
                     loss.backward()
                     opt.step()
@@ -376,32 +353,28 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
                 perf_trackers[client_id].new_eval(index=r+1)
                 
         # Compute representations
-        logits_tracker.new_round()
-        feature_tracker.new_round()
+        tracker.new_round()
         
         t1 = time.time()    
         print("\rRound {} done. ({:.1f}s)".format(r+1, t1-t0), end=6*" ")  
     
     
     # Evalutate models (averaging performance)
-    # tr_loss = np.array([pt.perf_histories["Train"]["loss"][-1] for pt in perf_trackers])
-    # val_loss = np.array([pt.perf_histories["Validation"]["loss"][-1] for pt in perf_trackers])
-    # tr_acc = np.array([pt.perf_histories["Train"]["accuracy"][-1] for pt in perf_trackers])
-    # val_acc = np.array([pt.perf_histories["Validation"]["accuracy"][-1] for pt in perf_trackers]).mean()
+    tr_loss = np.array([pt.perf_histories["Train"]["loss"][-1] for pt in perf_trackers]).mean()
+    val_loss = np.array([pt.perf_histories["Validation"]["loss"][-1] for pt in perf_trackers]).mean()
+    tr_acc = np.array([pt.perf_histories["Train"]["accuracy"][-1] for pt in perf_trackers]).mean()
+    val_acc = np.array([pt.perf_histories["Validation"]["accuracy"][-1] for pt in perf_trackers]).mean()
     print("\nFinal average performance:")
-    # print("\t- Train loss: {:.2f} | Validation loss: {:.2f}".format(tr_loss, val_loss))
-    # print("\t- Train acc: {:.2f}% | Validation acc: {:.2f}%".format(100*tr_acc, 100*val_acc))
-    print("Train acc",)
-    print(f"Data size : {data_size} Collab Flag :{collab_flag}")
-    for _ in range(meta["n_class"]):
-        print(np.array(list([pt.perf_histories[f"Validation{_}"]["accuracy"][-1] for pt in perf_trackers]))) 
+    print("\t- Train loss: {:.2f} | Validation loss: {:.2f}".format(tr_loss, val_loss))
+    print("\t- Train acc: {:.2f}% | Validation acc: {:.2f}%".format(100*tr_acc, 100*val_acc))
+    
     # Saving plots if necessary
     hlp.plot_global_training_history(perf_trackers, metric="accuracy", title="Training history: Accuracy",
                                      savepath=os.path.join(fig_directory, "accuracy_history.png") if export_dir is not None else None)
     hlp.plot_global_training_history(perf_trackers, metric="loss", title="Training history: Loss",
                                      savepath=os.path.join(fig_directory, "loss_history.png") if export_dir is not None else None)
     plt.close("all")
-    return perf_trackers, feature_tracker, logits_tracker
+    return perf_trackers, tracker
 
 def benchmark(n_clients, dataset, model, alpha="uniform", rounds=100, 
               batch_size=32, epoch_per_round=1, lr=1e-3, optimizer="adam", feature_dim=100, 
@@ -486,5 +459,5 @@ if __name__ == "__main__":
     
     
     # Run experiments
-    pt_list, ft, _ = run(**args_dict)
+    pt_list, ft = run(**args_dict)
 

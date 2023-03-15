@@ -152,3 +152,6 @@ Training
 Blog
 About
 Loading complete
+
+# tar files
+*.tar.gz

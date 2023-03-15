@@ -35,7 +35,7 @@ def set_seed(seed=0):
     np.random.seed(seed)
     random.seed(seed)
 
-def load_data(dataset="MNIST", data_dir="./data", reduced=False, normalize="image-wise", flatten=False, device="cpu"):
+def load_data(dataset="MNIST",data_size = 90, data_dir="./data", reduced=False, normalize="image-wise", flatten=False, device="cpu"):
     """Load the specified dataset.
     
     Arguments:
@@ -119,10 +119,10 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False, normalize="imag
     elif dataset == "COVID":
         print("** Using COVID **")
         print("Load train data...")
-        train_input, train_target = DM.get_covid(_type_="train")
+        train_input, train_target = DM.get_covid(_type_="train",_size_=data_size)
         train_input = train_input.float()
         print("Load validation data...")
-        test_input, test_target = DM.get_covid(_type_="test")
+        test_input, test_target = DM.get_covid(_type_="test",_size_=int(data_size/1))
         test_input = test_input.float()
         # Process train data
         # train_input = train_set.data.view(-1, 1, 28, 28).float()
@@ -133,8 +133,8 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False, normalize="imag
         # test_target = test_set.targets
         
         # Update metadata
-        meta["n_class"] = 4
-        meta["class_names"] = ["0", "1", "2", "3"]
+        meta["n_class"] = 3
+        meta["class_names"] = ["0", "1", "2"]
         
     elif dataset == "MNIST":
         print("** Using MNIST **")
@@ -152,9 +152,38 @@ def load_data(dataset="MNIST", data_dir="./data", reduced=False, normalize="imag
         test_target = test_set.targets
         
         # Update metadata
-        meta["n_class"] = 2
-        meta["class_names"] = ["0", "1"]
         
+        meta["n_class"] = 3
+        meta["class_names"] = ["0", "1", "2"]
+        sel_Cls = [0,6,9]
+        _ = []
+        d_size = [data_size]*4
+        for i in range(meta["n_class"]):
+            _.append((test_target==sel_Cls[i]).nonzero().squeeze()[0:d_size[i]])
+        _ = torch.cat(_, dim=0)
+        test_input = test_input[_]
+        test_target = test_target[_]
+
+        for _ in range(meta["n_class"]):
+            t = (test_target==sel_Cls[_]).nonzero().squeeze()
+            test_target[t] = _
+
+        _ = []
+        # d_size[0] *= 3
+        for i in range(meta["n_class"]):
+            _.append((train_target==sel_Cls[i]).nonzero().squeeze()[0:d_size[i]])
+        _ = torch.cat(_, dim=0)
+        train_input = train_input[_]
+        train_target = train_target[_] 
+        # print(train_target)
+        # print(test_target) 
+        # 
+        for _ in range(meta["n_class"]):
+            t = (train_target==sel_Cls[_]).nonzero().squeeze()
+            train_target[t] = _
+      
+
+
     elif dataset == "FMNIST":
         print("** Using FMNIST **")
         print("Load train data...")
@@ -319,7 +348,7 @@ def split_dataset_randomly(dataset, sizes):
 
     return dataset_list[:-1]
 
-def split_dataset(n_clients, train_ds, val_ds, alpha, sizes=None):
+def split_dataset(n_clients, train_ds, val_ds, alpha, expertise, noise, sizes=None):
     """Create a matrix whose columns sum to (at most) the class counts and
     whose rows sum to exactly to the specified sizes. The rows are distributed following 
     (approximatively) a Dirichlet distribution of concentration alpha (times the prior obtained using
@@ -468,39 +497,15 @@ def split_dataset(n_clients, train_ds, val_ds, alpha, sizes=None):
 
     
     for client_id in range(n_clients):
-        for x in range(1,len(train_y_list[client_id])):
-            if x == client_id:
-                train_y_list[client_id][x] = torch.ones_like(train_y_list[client_id][x])
-                # p = int(train_y_list[client_id][x].shape[0]/2)
-                # train_y_list[client_id][x] = train_y_list[client_id][x][0:p]
-                # train_x_list[client_id][x] = train_x_list[client_id][x][0:p,:,:]
-                
-            elif x == 0:
-                train_y_list[client_id][x] = torch.zeros_like(train_y_list[client_id][x])
-                # print(train_y_list[client_id][x].shape)
-                # p = int(train_y_list[client_id][x].shape[0]/3)
-                # train_y_list[client_id][x] = train_y_list[client_id][x][0:p]
-                # train_x_list[client_id][x] = train_x_list[client_id][x][0:p,:,:]
-                # # print(train_x_list[client_id][x].shape)
-            else:
-                train_y_list[client_id][x] = torch.empty(0, dtype=torch.long).to("cuda")
-                train_x_list[client_id][x] = torch.empty(0,1,200,200).to("cuda")
-            
-        for x in range(1,len(val_y_list[client_id])):
-            if x == client_id:
-                val_y_list[client_id][x] = torch.ones_like(val_y_list[client_id][x])
-                # p = int(val_y_list[client_id][x].shape[0]/2)
-                # val_y_list[client_id][x] = val_y_list[client_id][x][0:p]
-                # val_x_list[client_id][x] = val_x_list[client_id][x][0:p,:,:]
-                
-            else:
-                val_y_list[client_id][x] = torch.zeros_like(val_y_list[client_id][x])
-                # p = int(val_y_list[client_id][x].shape[0]/3)
-                # val_y_list[client_id][x] = val_y_list[client_id][x][0:p]
-                # val_x_list[client_id][x] = val_x_list[client_id][x][0:p,:,:]
-                
-            
-            # print(x,train_y_list[client_id][x])
+        n_class = len(train_x_list[client_id])
+        if n_clients != 1:
+            for cls_ in range(n_class):
+                n = len(train_x_list[client_id][cls_])
+                if(cls_ != expertise[client_id ] and cls_ != 0):
+                    n = int(n*(1-noise))
+                train_x_list[client_id][cls_] = train_x_list[client_id][cls_][:n]
+                train_y_list[client_id][cls_] = train_y_list[client_id][cls_][:n]
+        
         train_ds_list.append(CustomDataset(torch.cat(train_x_list[client_id], dim=0),
                                               torch.cat(train_y_list[client_id], dim=0)))
         val_ds_list.append(CustomDataset(torch.cat(val_x_list[client_id], dim=0),
@@ -515,10 +520,15 @@ def counter_func(lst,val):
                 res += 1
         return res
 
-def uniform_test_split(val_input,val_target,n_clients):
+def uniform_test_split(val_input,val_target,n_clients,n_class):
     val_ds_list = []
-    for _ in range(n_clients):
-        val_ds_list.append(CustomDataset(val_input,val_target))
+    for client_id in range(n_clients):
+        ds_lst = []
+        for cls in range(n_class):
+            idx = (val_target==cls).nonzero().squeeze()
+            ds_lst.append(CustomDataset(val_input[idx],val_target[idx]))
+        val_ds_list.append(ds_lst)
+    # DS = [val_ds_list for _ in range(n_clients)]
     return val_ds_list
 
 
@@ -546,6 +556,7 @@ def expertise_oriented_test_split(val_input,val_target,n_clients,expertise):
 
 
 def expertise_oriented_train_split(train_input,train_target,n_clients,expertise,noise):
+    noise = 4*noise/(1+4*noise)
     expertise_count = []
     for _ in range(4):
         expertise_count.append(counter_func(expertise,_))
@@ -564,8 +575,13 @@ def expertise_oriented_train_split(train_input,train_target,n_clients,expertise,
     for client_id in range(n_clients):
         idxs = []
         # add noise
+        counts = [0]*4
         for cls in range(4):
+            if(cls==0 or cls==expertise[client_id]):
+                continue
+
             _ = torch.tensor_split(noise_cls_indx[cls], n_clients)  
+            counts[cls] += _[client_id].shape[0]
             # if(cls==0):
             #     train_target[_[client_id]] = 0
             # elif(cls==expertise[client_id]):
@@ -574,20 +590,29 @@ def expertise_oriented_train_split(train_input,train_target,n_clients,expertise,
             #     train_target[_[client_id]] = 2
 
             idxs.append(_[client_id])
-        
-        # add class 0
-        _ = torch.tensor_split(cls_indx[0], n_clients)
-        idxs.append(_[client_id])
-        # train_target[_[client_id]] = 0
 
         # add expertise
         _ = torch.tensor_split(cls_indx[expertise[client_id]], expertise_count[expertise[client_id]])
         idxs.append(_[used_idxs[expertise[client_id]]])
         # train_target[_[used_idxs[expertise[client_id]]]] = 1
+        counts[expertise[client_id]] += _[used_idxs[expertise[client_id]]].shape[0]
+
+        # add class 0
+        left_zeros = 2*counts[expertise[client_id]] - sum(counts)
+        _ = torch.tensor_split(cls_indx[0], n_clients)
+        idxs.append(_[client_id][0:left_zeros])
+        # train_target[_[client_id]] = 0
+        
 
         used_idxs[expertise[client_id]] += 1
         _ = torch.cat(idxs, dim=0)
-        _ = _[torch.randperm(_.size()[0])]
+        # print("Client", client_id)
+        # print("0 : ",(train_target[_]==0).sum(dim=0))
+        # print("1 : ",(train_target[_]==1).sum(dim=0))
+        # print("2 : ",(train_target[_]==2).sum(dim=0))
+        # print("3 : ",(train_target[_]==3).sum(dim=0))
+        # print("All : ",_.shape[0])
+        # _ = _[torch.randperm(_.size()[0])]
         train_data_idxs.append(_)
         
         

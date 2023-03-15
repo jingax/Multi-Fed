@@ -1,5 +1,9 @@
-CUDA_VISIBLE_DEVICES=2 python runC.py --n_clients 9 --dataset COVID --model ResNet9 --feature_dim 250 --rounds 30 --seed 1
-CUDA_VISIBLE_DEVICES=2 python runC.py --n_clients 9 --dataset COVID --model ResNet9 --feature_dim 250 --rounds 30 --seed 2
-CUDA_VISIBLE_DEVICES=2 python runC.py --n_clients 9 --dataset COVID --model ResNet9 --feature_dim 250 --rounds 30 --seed 3
-CUDA_VISIBLE_DEVICES=2 python runC.py --n_clients 9 --dataset COVID --model ResNet9 --feature_dim 250 --rounds 30 --seed 4
-CUDA_VISIBLE_DEVICES=2 python runC.py --n_clients 9 --dataset COVID --model ResNet9 --feature_dim 250 --rounds 30 --seed 5
+N=100
+S=1
+noise=0.2
+data=COVID
+r=100
+CUDA_VISIBLE_DEVICES=3 python runC.py --n_clients 2 --dataset $data --model ResNet9 --feature_dim 200 --rounds $r --seed $S --preset IL --data_size $N --noise $noise
+CUDA_VISIBLE_DEVICES=3 python runC.py --n_clients 2 --dataset $data --model ResNet9 --feature_dim 200 --rounds $r --seed $S --preset CL --data_size $N --noise $noise
+CUDA_VISIBLE_DEVICES=3 python runC.py --n_clients 2 --dataset $data --model ResNet9 --feature_dim 200 --rounds $r --seed $S --preset FD --data_size $N --noise $noise
+CUDA_VISIBLE_DEVICES=3 python runC.py --n_clients 2 --dataset $data --model ResNet9 --feature_dim 200 --rounds $r --seed $S --preset FL --data_size $N --noise $noise
