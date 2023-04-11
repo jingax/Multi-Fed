@@ -113,9 +113,10 @@ def get_covid(_type_,_size_):
     df = pd.DataFrame(columns = ['image', 'label'])
     # normal, covid, nemoina, opa
     no_images = [10192, 3616, 1345, 6012]
+    if(_type_ != "train"):
+        _size_ *= 1    
+    
     act_no = [_size_]*4
-    # if(_type_ == "train"):
-    #     act_no[0] *= 3    
     label = 0
     permu = np.random.permutation(no_images[label])
     # print(min(act_no[label], no_images[label]))

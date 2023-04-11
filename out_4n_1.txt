@@ -1,0 +1,136 @@
+Running IL with 6 clients
+Device: cuda
+** Using COVID **
+Load train data...
+Load validation data...
+Dataset sizes:
+	- Train: (900, 1, 200, 200) (144.0072 MB)
+	- Validation (2700, 1, 200, 200) (432.0216 MB)
+
+Final average performance:
+Train acc
+Data size : 300 Collab Flag :False
+[0.18444444 0.68666667 0.73       0.8        0.83888889 0.62888889]
+[0.94444444 0.57666667 0.63       0.2        0.17444444 0.56777778]
+[0.81555556 0.82444444 0.59111111 0.90666667 0.93444444 0.91222222]
+Running FL with 6 clients
+Device: cuda
+** Using COVID **
+Load train data...
+Load validation data...
+Dataset sizes:
+	- Train: (900, 1, 200, 200) (144.0072 MB)
+	- Validation (2700, 1, 200, 200) (432.0216 MB)
+
+Final average performance:
+Train acc
+Data size : 300 Collab Flag :False
+[1. 1. 1. 1. 1. 1.]
+[0. 0. 0. 0. 0. 0.]
+[0. 0. 0. 0. 0. 0.]
+Running centralized learning
+Device: cuda
+** Using COVID **
+Load train data...
+Load validation data...
+Dataset sizes:
+	- Train: (900, 1, 200, 200) (144.0072 MB)
+	- Validation (2700, 1, 200, 200) (432.0216 MB)
+
+Final average performance:
+Train acc
+Data size : 300 Collab Flag :False
+[0.79777778]
+[0.83222222]
+[0.97444444]
+Running FD with 6 clients
+Device: cuda
+** Using COVID **
+Load train data...
+Load validation data...
+Dataset sizes:
+	- Train: (900, 1, 200, 200) (144.0072 MB)
+	- Validation (2700, 1, 200, 200) (432.0216 MB)
+
+Final average performance:
+Train acc
+Data size : 300 Collab Flag :False
+[0.34777778 0.81       0.75       0.88888889 0.89111111 0.77333333]
+[0.90222222 0.42777778 0.61333333 0.         0.00777778 0.41444444]
+[0.61111111 0.67333333 0.69555556 0.88777778 0.91333333 0.90444444]
+Running FD with 6 clients
+Device: cuda
+** Using COVID **
+Load train data...
+Load validation data...
+Dataset sizes:
+	- Train: (900, 1, 200, 200) (144.0072 MB)
+	- Validation (2700, 1, 200, 200) (432.0216 MB)
+
+Final average performance:
+Train acc
+Data size : 300 Collab Flag :False
+[0.25111111 0.80666667 0.75888889 0.89222222 0.89       0.76333333]
+[0.94111111 0.44333333 0.61555556 0.         0.00666667 0.43888889]
+[0.64555556 0.66111111 0.66555556 0.86555556 0.91666667 0.90111111]
+----------------------------------------------------
+Running IL with 6 clients
+Device: cuda
+** Using COVID **
+Load train data...
+Load validation data...
+Dataset sizes:
+	- Train: (900, 1, 200, 200) (144.0072 MB)
+	- Validation (2700, 1, 200, 200) (432.0216 MB)
+
+Final average performance:
+Train acc
+Data size : 300 Collab Flag :False
+[0.66666667 0.76555556 0.77222222 0.83444444 0.79777778 0.74      ]
+[0.66555556 0.51444444 0.53666667 0.05666667 0.28       0.40777778]
+[0.69222222 0.84333333 0.88222222 0.95555556 0.91888889 0.93222222]
+Running FL with 6 clients
+Device: cuda
+** Using COVID **
+Load train data...
+Load validation data...
+Dataset sizes:
+	- Train: (900, 1, 200, 200) (144.0072 MB)
+	- Validation (2700, 1, 200, 200) (432.0216 MB)
+
+Final average performance:
+Train acc
+Data size : 300 Collab Flag :False
+[1. 1. 1. 1. 1. 1.]
+[0. 0. 0. 0. 0. 0.]
+[0. 0. 0. 0. 0. 0.]
+Running FD with 6 clients
+Device: cuda
+** Using COVID **
+Load train data...
+Load validation data...
+Dataset sizes:
+	- Train: (900, 1, 200, 200) (144.0072 MB)
+	- Validation (2700, 1, 200, 200) (432.0216 MB)
+
+Final average performance:
+Train acc
+Data size : 300 Collab Flag :False
+[0.61555556 0.80666667 0.74666667 0.9        0.91       0.85111111]
+[0.69222222 0.39111111 0.62333333 0.00888889 0.01777778 0.32777778]
+[0.84333333 0.83333333 0.75222222 0.91222222 0.91666667 0.89333333]
+Running FD with 6 clients
+Device: cuda
+** Using COVID **
+Load train data...
+Load validation data...
+Dataset sizes:
+	- Train: (900, 1, 200, 200) (144.0072 MB)
+	- Validation (2700, 1, 200, 200) (432.0216 MB)
+
+Final average performance:
+Train acc
+Data size : 300 Collab Flag :False
+[0.69111111 0.85555556 0.79444444 0.81444444 0.93222222 0.83555556]
+[0.61777778 0.35888889 0.57333333 0.03888889 0.03111111 0.27666667]
+[0.70222222 0.68222222 0.71888889 0.96888889 0.84444444 0.94444444]

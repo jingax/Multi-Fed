@@ -93,7 +93,7 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
             print("Running FD with {} clients".format(n_clients))
             n_avg = None
             lambda_disc=0
-            kd_type = "output"
+            # kd_type = "output"
             fed_avg = False
         elif preset in ["il", "IL"]:
             print("Running IL with {} clients".format(n_clients))
@@ -143,7 +143,7 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
     hlp.set_seed(seed)
     
     # set expertise of of clients 
-    expertise = [1,2]
+    expertise = [1,1,1,2,2,2]
     
     
     partner_client_list = []
@@ -202,7 +202,7 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
     
     # Define criterions
     criterion = nn.CrossEntropyLoss()
-    criterion_kd = nn.MSELoss()
+    criterion_kd = nn.MSELoss(reduction ='none')
     criterion_disc = nn.BCELoss(reduction ='none')
     
     # Model initialization
@@ -253,6 +253,7 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
         raise ValueError("Optimizer unknown.")
     
     #Each client updates its model locally on its own dataset
+    print(kd_type)
     for r in range(rounds):
         t0 = time.time()
         
@@ -287,13 +288,35 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
                         rand_idx = random.randrange(len(non_partner_client_list[client_id]))
                         non_partner_client = non_partner_client_list[client_id][rand_idx]
                
-                    if lambda_kd > 0:
+                    if lambda_kd > 0 and r%5 == 0:
                         # Compute estimated probabilities
                         rand_idx = random.randrange(n_clients-1)
                         if(rand_idx >= client_id):
                             rand_idx += 1
-                        partner_teacher_data = logits_tracker.get_global_outputs(n_avg=n_avg, client_id="random",sel_cli=rand_idx).to(device)
-                        loss += lambda_kd * criterion_kd(logits, partner_teacher_data[targets])
+                        
+                        if kd_type == "feature":
+                            partner_teacher_data = feature_tracker.get_global_outputs(n_avg=n_avg, client_id="random",sel_cli=rand_idx).to(device)
+                            _pull = torch.ones_like(targets.float())
+                            _pull[(targets==0).nonzero().squeeze()] = 1
+                            _pull[(targets==expertise[rand_idx]).nonzero().squeeze()] = 1
+                            no_of_ones_pull = (_pull).sum(dim=0)
+                            loss += lambda_kd  * torch.mean(torch.matmul( _pull[:,None].T,criterion_kd(features, partner_teacher_data[targets])))/no_of_ones_pull  
+                        
+                            # loss += lambda_kd * torch.dot(torch.mean(criterion_kd(features, partner_teacher_data[targets]),1),_pull)/no_of_ones_pull
+                            
+                            # loss += lambda_kd * criterion_kd(features, partner_teacher_data[targets])
+                        
+                        elif kd_type == "output":
+                            partner_teacher_data = logits_tracker.get_global_outputs(n_avg=n_avg, client_id="random",sel_cli=rand_idx).to(device)
+                            _pull = torch.ones_like(targets.float())
+                            _pull[(targets==0).nonzero().squeeze()] = 1
+                            _pull[(targets==expertise[rand_idx]).nonzero().squeeze()] = 1
+                            no_of_ones_pull = (_pull).sum(dim=0)
+                        
+                            # loss += lambda_kd * torch.dot(torch.mean(criterion_kd(logits, partner_teacher_data[targets]),1),_pull)/no_of_ones_pull
+                            # print(torch.mean(torch.matmul( _pull[:,None].T,criterion_kd(logits, partner_teacher_data[targets]))))
+                            loss += lambda_kd  * torch.mean(torch.matmul( _pull[:,None].T,criterion_kd(logits, partner_teacher_data[targets])))/no_of_ones_pull  
+                        
                         
 
                         # partner_client = None
@@ -345,7 +368,7 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
                         opt_disc.step()
         
         # Use FedAvg on the classifer
-        if fed_avg == "classifier":
+        if fed_avg == "classifier" and r%5 == 0:
             # Aggregation (weighted average)
             global_parameters = global_model.classifier.state_dict()
             for k in global_parameters.keys():
@@ -358,7 +381,7 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
 
 
         # Use FedAvg on the model (standard FL)
-        elif fed_avg == "model":
+        elif fed_avg == "model" and r%5 == 0:
             # Aggregation (weighted average)
             global_parameters = global_model.state_dict()
             for k in global_parameters.keys():
@@ -380,7 +403,7 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
         feature_tracker.new_round()
         
         t1 = time.time()    
-        print("\rRound {} done. ({:.1f}s)".format(r+1, t1-t0), end=6*" ")  
+        # print("\rRound {} done. ({:.1f}s)".format(r+1, t1-t0), end=6*" ")  
     
     
     # Evalutate models (averaging performance)
@@ -394,7 +417,7 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
     print("Train acc",)
     print(f"Data size : {data_size} Collab Flag :{collab_flag}")
     for _ in range(meta["n_class"]):
-        print(np.array(list([pt.perf_histories[f"Validation{_}"]["accuracy"][-1] for pt in perf_trackers]))) 
+        print(list([pt.perf_histories[f"Validation{_}"]["accuracy"][-1] for pt in perf_trackers])) 
     # Saving plots if necessary
     hlp.plot_global_training_history(perf_trackers, metric="accuracy", title="Training history: Accuracy",
                                      savepath=os.path.join(fig_directory, "accuracy_history.png") if export_dir is not None else None)
