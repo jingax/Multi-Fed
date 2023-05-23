@@ -5,6 +5,7 @@ covid/*
 saves/*
 archives/
 *.DS_Store
+ocu/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -128,6 +129,7 @@ venv.bak/
 *.jpeg
 *.pt
 *.zip
+*.npz
 
 # mkdocs documentation
 /site

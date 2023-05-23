@@ -143,7 +143,7 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
     hlp.set_seed(seed)
     
     # set expertise of of clients 
-    expertise = [1,1,1,2,2,2]
+    expertise = [1,1,2,2]
     
     
     partner_client_list = []
@@ -288,7 +288,7 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
                         rand_idx = random.randrange(len(non_partner_client_list[client_id]))
                         non_partner_client = non_partner_client_list[client_id][rand_idx]
                
-                    if lambda_kd > 0 and r%5 == 0:
+                    if lambda_kd > 0 and r%1 == 0:
                         # Compute estimated probabilities
                         rand_idx = random.randrange(n_clients-1)
                         if(rand_idx >= client_id):
@@ -381,7 +381,7 @@ def run(n_clients=2, dataset="MNIST", model="LeNet5", alpha="uniform", rounds=10
 
 
         # Use FedAvg on the model (standard FL)
-        elif fed_avg == "model" and r%5 == 0:
+        elif fed_avg == "model" and r%1 == 0:
             # Aggregation (weighted average)
             global_parameters = global_model.state_dict()
             for k in global_parameters.keys():

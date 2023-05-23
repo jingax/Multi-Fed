@@ -1,40 +1,41 @@
-N=700
-S=2
+N=600
+S=0
 noise=0.0
 data=COVID
 r=100
 fea_dim=200
 mdl=LeNet5
-num=6
-CUDA_VISIBLE_DEVICES=3 python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset IL --data_size $N --noise $noise
-CUDA_VISIBLE_DEVICES=3 python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset FD --data_size $N --noise $noise --kd_type feature
-CUDA_VISIBLE_DEVICES=3 python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset FD --data_size $N --noise $noise --kd_type output
+num=4
+gpu=1
+CUDA_VISIBLE_DEVICES=$gpu python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset IL --data_size $N --noise $noise
+CUDA_VISIBLE_DEVICES=$gpu python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset FD --data_size $N --noise $noise --kd_type feature
+# CUDA_VISIBLE_DEVICES=$gpu python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset FD --data_size $N --noise $noise --kd_type output
 
 echo "----------------------------------------------------"
 
 noise=0.2
-CUDA_VISIBLE_DEVICES=3 python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset IL --data_size $N --noise $noise
-CUDA_VISIBLE_DEVICES=3 python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset FD --data_size $N --noise $noise --kd_type feature
-CUDA_VISIBLE_DEVICES=3 python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset FD --data_size $N --noise $noise --kd_type output
+CUDA_VISIBLE_DEVICES=$gpu python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset IL --data_size $N --noise $noise
+CUDA_VISIBLE_DEVICES=$gpu python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset FD --data_size $N --noise $noise --kd_type feature
+# CUDA_VISIBLE_DEVICES=$gpu python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset FD --data_size $N --noise $noise --kd_type output
 
 echo "----------------------------------------------------"
 
 noise=0.4
-CUDA_VISIBLE_DEVICES=3 python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset IL --data_size $N --noise $noise
-CUDA_VISIBLE_DEVICES=3 python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset FD --data_size $N --noise $noise --kd_type feature
-CUDA_VISIBLE_DEVICES=3 python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset FD --data_size $N --noise $noise --kd_type output
+CUDA_VISIBLE_DEVICES=$gpu python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset IL --data_size $N --noise $noise
+CUDA_VISIBLE_DEVICES=$gpu python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset FD --data_size $N --noise $noise --kd_type feature
+# CUDA_VISIBLE_DEVICES=$gpu python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset FD --data_size $N --noise $noise --kd_type output
 
 echo "----------------------------------------------------"
 
 noise=0.6
-CUDA_VISIBLE_DEVICES=3 python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset IL --data_size $N --noise $noise
-CUDA_VISIBLE_DEVICES=3 python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset FD --data_size $N --noise $noise --kd_type feature
-CUDA_VISIBLE_DEVICES=3 python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset FD --data_size $N --noise $noise --kd_type output
+CUDA_VISIBLE_DEVICES=$gpu python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset IL --data_size $N --noise $noise
+CUDA_VISIBLE_DEVICES=$gpu python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset FD --data_size $N --noise $noise --kd_type feature
+# CUDA_VISIBLE_DEVICES=$gpu python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset FD --data_size $N --noise $noise --kd_type output
 
 echo "----------------------------------------------------"
 
-noise=0.8
-CUDA_VISIBLE_DEVICES=3 python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset IL --data_size $N --noise $noise
-CUDA_VISIBLE_DEVICES=3 python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset FD --data_size $N --noise $noise --kd_type feature
-CUDA_VISIBLE_DEVICES=3 python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset FD --data_size $N --noise $noise --kd_type output
+# noise=0.8
+# CUDA_VISIBLE_DEVICES=$gpu python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset IL --data_size $N --noise $noise
+# CUDA_VISIBLE_DEVICES=$gpu python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset FD --data_size $N --noise $noise --kd_type feature
+# CUDA_VISIBLE_DEVICES=$gpu python runC.py --n_clients $num --dataset $data --model $mdl --feature_dim $fea_dim --rounds $r --seed $S --preset FD --data_size $N --noise $noise --kd_type output
 

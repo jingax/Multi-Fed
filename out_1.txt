@@ -1,0 +1,132 @@
+Running IL with 4 clients
+Device: cuda
+** Using COVID **
+Load train data...
+Load validation data...
+Dataset sizes:
+	- Train: (1500, 1, 200, 200) (240.012 MB)
+	- Validation (1500, 1, 200, 200) (240.012 MB)
+output
+
+Final average performance:
+Train acc
+Data size : 500 Collab Flag :False
+[0.66, 0.67, 0.636, 0.586]
+[0.644, 0.706, 0.692, 0.768]
+[0.906, 0.916, 0.972, 0.986]
+Running FD with 4 clients
+Device: cuda
+** Using COVID **
+Load train data...
+Load validation data...
+Dataset sizes:
+	- Train: (1500, 1, 200, 200) (240.012 MB)
+	- Validation (1500, 1, 200, 200) (240.012 MB)
+feature
+
+Final average performance:
+Train acc
+Data size : 500 Collab Flag :False
+[0.534, 0.762, 0.708, 0.606]
+[0.802, 0.632, 0.728, 0.78]
+[0.972, 0.87, 0.942, 0.978]
+----------------------------------------------------
+Running IL with 4 clients
+Device: cuda
+** Using COVID **
+Load train data...
+Load validation data...
+Dataset sizes:
+	- Train: (1500, 1, 200, 200) (240.012 MB)
+	- Validation (1500, 1, 200, 200) (240.012 MB)
+output
+
+Final average performance:
+Train acc
+Data size : 500 Collab Flag :False
+[0.714, 0.494, 0.69, 0.784]
+[0.594, 0.844, 0.698, 0.362]
+[0.876, 0.762, 0.98, 0.962]
+Running FD with 4 clients
+Device: cuda
+** Using COVID **
+Load train data...
+Load validation data...
+Dataset sizes:
+	- Train: (1500, 1, 200, 200) (240.012 MB)
+	- Validation (1500, 1, 200, 200) (240.012 MB)
+feature
+
+Final average performance:
+Train acc
+Data size : 500 Collab Flag :False
+[0.802, 0.564, 0.702, 0.842]
+[0.506, 0.84, 0.628, 0.39]
+[0.858, 0.802, 0.974, 0.938]
+----------------------------------------------------
+Running IL with 4 clients
+Device: cuda
+** Using COVID **
+Load train data...
+Load validation data...
+Dataset sizes:
+	- Train: (1500, 1, 200, 200) (240.012 MB)
+	- Validation (1500, 1, 200, 200) (240.012 MB)
+output
+
+Final average performance:
+Train acc
+Data size : 500 Collab Flag :False
+[0.838, 0.458, 0.556, 0.752]
+[0.416, 0.864, 0.746, 0.652]
+[0.822, 0.87, 0.898, 0.91]
+Running FD with 4 clients
+Device: cuda
+** Using COVID **
+Load train data...
+Load validation data...
+Dataset sizes:
+	- Train: (1500, 1, 200, 200) (240.012 MB)
+	- Validation (1500, 1, 200, 200) (240.012 MB)
+feature
+
+Final average performance:
+Train acc
+Data size : 500 Collab Flag :False
+[0.886, 0.468, 0.62, 0.714]
+[0.36, 0.854, 0.798, 0.704]
+[0.768, 0.878, 0.814, 0.922]
+----------------------------------------------------
+Running IL with 4 clients
+Device: cuda
+** Using COVID **
+Load train data...
+Load validation data...
+Dataset sizes:
+	- Train: (1500, 1, 200, 200) (240.012 MB)
+	- Validation (1500, 1, 200, 200) (240.012 MB)
+output
+
+Final average performance:
+Train acc
+Data size : 500 Collab Flag :False
+[0.682, 0.612, 0.852, 0.852]
+[0.726, 0.72, 0.248, 0.466]
+[0.642, 0.86, 0.908, 0.928]
+Running FD with 4 clients
+Device: cuda
+** Using COVID **
+Load train data...
+Load validation data...
+Dataset sizes:
+	- Train: (1500, 1, 200, 200) (240.012 MB)
+	- Validation (1500, 1, 200, 200) (240.012 MB)
+feature
+
+Final average performance:
+Train acc
+Data size : 500 Collab Flag :False
+[0.674, 0.766, 0.94, 0.916]
+[0.802, 0.618, 0.268, 0.332]
+[0.682, 0.78, 0.766, 0.906]
+----------------------------------------------------

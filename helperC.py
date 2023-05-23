@@ -136,6 +136,43 @@ def load_data(dataset="MNIST",data_size = 90, data_dir="./data", reduced=False, 
         meta["n_class"] = 3
         meta["class_names"] = ["0", "1", "2"]
         
+    elif dataset == "DERMNIST":
+        print("** Using DerMNIST **")
+        print("Load data...")
+        train_input, train_target, test_input, test_target = DM.get_der(_size_=data_size)
+        train_input = train_input.float()
+        test_input = test_input.float()
+        # Process train data
+        # train_input = train_set.data.view(-1, 1, 28, 28).float()
+        # train_target = train_set.targets
+        
+        # # Process validation data
+        # test_input = test_set.data.view(-1, 1, 28, 28).float()
+        # test_target = test_set.targets
+        
+        # Update metadata
+        meta["n_class"] = 3
+        meta["class_names"] = ["0", "1", "2"]
+
+    elif dataset == "OCULAR":
+        print("** Using OCULAR **")
+        print("Load data...")
+        train_input, train_target, test_input, test_target = DM.get_ocular(_size_=data_size)
+        train_input = train_input.float()
+        test_input = test_input.float()
+        # Process train data
+        # train_input = train_set.data.view(-1, 1, 28, 28).float()
+        # train_target = train_set.targets
+        
+        # # Process validation data
+        # test_input = test_set.data.view(-1, 1, 28, 28).float()
+        # test_target = test_set.targets
+        
+        # Update metadata
+        meta["n_class"] = 3
+        meta["class_names"] = ["0", "1", "2"]
+        
+    
     elif dataset == "MNIST":
         print("** Using MNIST **")
         print("Load train data...")
@@ -181,7 +218,7 @@ def load_data(dataset="MNIST",data_size = 90, data_dir="./data", reduced=False, 
         for _ in range(meta["n_class"]):
             t = (train_target==sel_Cls[_]).nonzero().squeeze()
             train_target[t] = _
-      
+        
 
 
     elif dataset == "FMNIST":
